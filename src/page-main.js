@@ -15,6 +15,7 @@
     active: false,
     loadedAt: new Date().toISOString(),
     coreReady: false,
+    bridgeTransport: 'postMessage',
     tokenPublishedAt: null,
     bridgeRequests: 0,
     rulesReceivedAt: null,
@@ -47,7 +48,6 @@
   diagnostic.coreReady = true;
 
   const CHANNEL = 'piliplus-purify-browser';
-  const TOKEN_META_NAME = 'piliplus-purify-bridge-token';
   const tokenBytes = new Uint8Array(16);
   crypto.getRandomValues(tokenBytes);
   const token = [...tokenBytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -112,16 +112,7 @@
   }
 
   function publishToken() {
-    if (!document.documentElement) {
-      setTimeout(publishToken, 0);
-      return;
-    }
-    const old = document.querySelector(`meta[name="${TOKEN_META_NAME}"]`);
-    if (old) old.remove();
-    const meta = document.createElement('meta');
-    meta.name = TOKEN_META_NAME;
-    meta.content = token;
-    document.documentElement.appendChild(meta);
+    post('bridge-token');
     diagnostic.tokenPublishedAt = new Date().toISOString();
   }
 

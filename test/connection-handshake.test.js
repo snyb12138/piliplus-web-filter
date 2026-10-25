@@ -58,7 +58,6 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   const runtimeListeners = [];
   const storageListeners = [];
   const storageState = {};
-  let tokenMeta = null;
   let fetchBytes = new Uint8Array();
   const windowProxy = {
     fetch: async () => new Response(fetchBytes),
@@ -72,18 +71,11 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   const document = {
     readyState: 'loading',
     documentElement: new FakeElement('html'),
-    querySelector(selector) {
-      return selector.includes('piliplus-purify-bridge-token') ? tokenMeta : null;
-    },
-    createElement() {
-      const meta = new FakeElement('meta');
-      meta.remove = () => {
-        if (tokenMeta === meta) tokenMeta = null;
-      };
-      return meta;
-    },
+    querySelector() { return null; },
+    createElement() { return new FakeElement('meta'); },
   };
-  document.documentElement.appendChild = (node) => { tokenMeta = node; };
+  let rootWrites = 0;
+  document.documentElement.appendChild = () => { rootWrites += 1; };
 
   class FakeMutationObserver {
     constructor(callback) { this.callback = callback; }
@@ -147,6 +139,8 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   assert.equal(status.connected, true);
   assert.equal(status.rulesReady, true);
   assert.equal(status.connection.coreReady, true);
+  assert.equal(status.connection.bridgeTransport, 'postMessage');
+  assert.equal(rootWrites, 0);
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.fetchHookInstalled, true);
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.xhrHookInstalled, true);
 

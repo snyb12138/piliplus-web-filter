@@ -14,6 +14,7 @@
     active: false,
     loadedAt: new Date().toISOString(),
     coreReady: false,
+    bridgeTransport: 'postMessage',
     tokenFound: false,
     bridgeRequests: 0,
     bridgeConnectedAt: null,
@@ -35,7 +36,6 @@
   connection.coreReady = true;
 
   const CHANNEL = 'piliplus-purify-browser';
-  const TOKEN_META_NAME = 'piliplus-purify-bridge-token';
   const STORAGE_KEY = 'purifyConfig';
   const AD_RULES_KEY = 'adRuleCache';
   const MAX_HITS = 80;
@@ -147,11 +147,11 @@
     });
   }
 
-  function acquireToken() {
-    const meta = document.querySelector(`meta[name="${TOKEN_META_NAME}"]`);
-    if (!meta || !/^[0-9a-f]{32}$/u.test(meta.content)) return false;
-    token = meta.content;
-    meta.remove();
+  function acquireToken(candidate) {
+    if (!/^[0-9a-f]{32}$/u.test(candidate || '')) return false;
+    if (token === candidate) return true;
+    if (token) return false;
+    token = candidate;
     status.connected = true;
     connection.tokenFound = true;
     connection.bridgeConnectedAt = new Date().toISOString();
@@ -162,7 +162,12 @@
 
   window.addEventListener('message', (event) => {
     const packet = event.data;
-    if (event.source !== window || packet?.__pbp !== true || packet.channel !== CHANNEL || packet.direction !== 'page-to-extension' || packet.token !== token) return;
+    if (event.source !== window || packet?.__pbp !== true || packet.channel !== CHANNEL || packet.direction !== 'page-to-extension') return;
+    if (packet.kind === 'bridge-token' && acquireToken(packet.token)) {
+      connection.lastPageMessageAt = new Date().toISOString();
+      return;
+    }
+    if (!token || packet.token !== token) return;
     connection.lastPageMessageAt = new Date().toISOString();
     if (packet.kind === 'rules-ready') {
       status.rulesReady = true;
@@ -193,23 +198,16 @@
     }
   });
 
-  if (!acquireToken()) {
-    const tokenObserver = new MutationObserver(() => {
-      if (acquireToken()) tokenObserver.disconnect();
-    });
-    tokenObserver.observe(document, { childList: true, subtree: true });
-    requestBridge();
-    setTimeout(() => {
-      if (!token) requestBridge();
-    }, 500);
-    setTimeout(() => {
-      tokenObserver.disconnect();
-      if (!token) {
-        connection.failure = 'bridge-timeout';
-        recordDiagnostic({ level: 'error', code: 'bridge-timeout', message: '页面数据层桥接超时，已仅启用 DOM 兜底' });
-      }
-    }, 3000);
-  }
+  requestBridge();
+  setTimeout(() => {
+    if (!token) requestBridge();
+  }, 500);
+  setTimeout(() => {
+    if (!token) {
+      connection.failure = 'bridge-timeout';
+      recordDiagnostic({ level: 'error', code: 'bridge-timeout', message: '页面数据层桥接超时，已仅启用 DOM 兜底' });
+    }
+  }, 3000);
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && (changes[STORAGE_KEY] || changes[AD_RULES_KEY])) {

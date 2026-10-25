@@ -1,4 +1,4 @@
-# PiliPlus Web Filter v0.5.1
+# PiliPlus Web Filter v0.5.2
 
 Chrome/Edge Manifest V3 扩展。插件导入 PiliPlus 屏蔽配置，并统一过滤 Bilibili 广告、弹幕、评论和指定 UP 主内容。
 
@@ -76,7 +76,7 @@ Chrome/Edge Manifest V3 扩展。插件导入 PiliPlus 屏蔽配置，并统一�
 - 尚未适配直播 WebSocket 弹幕。
 - BAS、互动弹幕、图片弹幕等特殊类型尚未单独验证。
 - DOM 兜底只能按文本过滤，无法获得发送者 `midHash`。
-- v0.5.1 面向 Chrome/Edge 111 及以上版本。
+- v0.5.2 面向 Chrome/Edge 111 及以上版本。
 - UP 主数据层适配覆盖当前常见的推荐、搜索、动态、热门/排行及相关推荐接口；未识别的新页面会退回 DOM 卡片隐藏。
 - 评论快捷按钮兼容传统评论 DOM 和可访问的开放 Shadow DOM；若 Bilibili 使用封闭 Shadow DOM，需针对其外层事件补充适配。
 - Bilibili 页面或接口更新后可能需要更新适配器。
