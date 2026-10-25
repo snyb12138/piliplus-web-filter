@@ -105,7 +105,12 @@
   const uploaderByContainer = new WeakMap();
   const uploaderRecords = new Set();
   const adRecords = new Set();
+  const ROUTE_SETTLE_MS = 1500;
+  const INCREMENTAL_SCAN_DELAY_MS = 80;
   let scanScheduled = false;
+  let scanTimer = null;
+  let activeRoute = `${location.origin}${location.pathname}${location.search}`;
+  let routeHoldUntil = 0;
   let danmakuMenuBusy = false;
   let uiHost;
   let uiRoot;
@@ -817,21 +822,56 @@
     for (const container of containers) observeListContainer(container);
   }
 
+  function currentRoute() {
+    return `${location.origin}${location.pathname}${location.search}`;
+  }
+
+  function detectRouteChange() {
+    const route = currentRoute();
+    if (route === activeRoute) return false;
+    activeRoute = route;
+    routeHoldUntil = Date.now() + ROUTE_SETTLE_MS;
+    pendingRoots.clear();
+    pendingRoots.add(document);
+    Api.record('routeScanDeferrals');
+    return true;
+  }
+
+  function flushContentScan() {
+    scanScheduled = false;
+    scanTimer = null;
+    if (detectRouteChange()) {
+      scheduleContentScan(document);
+      return;
+    }
+    const remaining = routeHoldUntil - Date.now();
+    if (remaining > 0) {
+      scanScheduled = true;
+      scanTimer = setTimeout(flushContentScan, remaining);
+      return;
+    }
+    const roots = [...pendingRoots];
+    pendingRoots.clear();
+    for (const root of roots) {
+      scanCommentRoot(root);
+      scanUploaderRoot(root);
+      scanAdRoot(root);
+    }
+    applyLayoutPreferences();
+  }
+
   function scheduleContentScan(root = document) {
     pendingRoots.add(root);
-    if (scanScheduled) return;
+    const routeChanged = detectRouteChange();
+    const delay = routeChanged
+      ? ROUTE_SETTLE_MS
+      : Math.max(INCREMENTAL_SCAN_DELAY_MS, routeHoldUntil - Date.now());
+    if (scanScheduled) {
+      if (!routeChanged) return;
+      clearTimeout(scanTimer);
+    }
     scanScheduled = true;
-    requestAnimationFrame(() => {
-      scanScheduled = false;
-      const roots = [...pendingRoots];
-      pendingRoots.clear();
-      for (const root of roots) {
-        scanCommentRoot(root);
-        scanUploaderRoot(root);
-        scanAdRoot(root);
-      }
-      applyLayoutPreferences();
-    });
+    scanTimer = setTimeout(flushContentScan, delay);
   }
 
   function observeRoot(root) {

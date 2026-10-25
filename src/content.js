@@ -79,6 +79,7 @@
       uploaderApiDropped: 0,
       adsDomHidden: 0,
       adsApiDropped: 0,
+      routeScanDeferrals: 0,
     },
   };
 

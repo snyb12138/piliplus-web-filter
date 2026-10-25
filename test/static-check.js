@@ -51,6 +51,9 @@ if (!interactionSource.includes("document.readyState === 'loading'") || !interac
 if (interactionSource.includes('data-pbp-video-ad-filter="1"] .strip-ad')) {
   throw new Error('video advertising CSS must not hide generic strip-ad nodes globally');
 }
+if (!interactionSource.includes('ROUTE_SETTLE_MS') || !interactionSource.includes('routeScanDeferrals')) {
+  throw new Error('SPA route stabilization is missing');
+}
 if (!fs.existsSync(path.join(root, 'config/ad-keywords.json'))) throw new Error('bundled advertising keywords are missing');
 if (!manifest.permissions?.includes('alarms')) throw new Error('advertising rule synchronization requires alarms');
 if (!fs.readFileSync(path.join(root, 'options.html'), 'utf8').includes('id="hideHomepageCarousel"')) {
