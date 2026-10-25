@@ -1,0 +1,22 @@
+{
+  "version": 3,
+  "mutedUsers": [
+    {
+      "mid": 123456789,
+      "name": "示例账号"
+    },
+    {
+      "mid": "33",
+      "name": "  前导零哈希测试  ",
+      "futureUserField": "keep-me"
+    }
+  ],
+  "aiFilterLevel": "balanced",
+  "trustedAiUsers": [],
+  "markedUsers": [],
+  "centerMode": "expanded",
+  "replyKeywordPattern": "示例|测试",
+  "futureTopLevel": {
+    "keep": true
+  }
+}

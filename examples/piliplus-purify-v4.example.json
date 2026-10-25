@@ -1,0 +1,43 @@
+{
+  "schema": "piliplus-purify",
+  "version": 4,
+  "mutedUsers": [
+    {
+      "mid": 123456789,
+      "name": "示例账号"
+    }
+  ],
+  "aiFilterLevel": "off",
+  "trustedAiUsers": [],
+  "markedUsers": [],
+  "centerMode": "expanded",
+  "replyKeywordPattern": "",
+  "danmakuAssistant": {
+    "version": 1,
+    "absoluteRules": ["包含即屏蔽"],
+    "gentleRules": ["整条相等才屏蔽"],
+    "blockDateStamps": false,
+    "blockTimeStamps": false,
+    "blockPeopleCounts": false,
+    "blockShortCheckIns": false
+  },
+  "danmakuRules": {
+    "keywords": ["示例关键词"],
+    "regex": ["^示例\\d+$"],
+    "uidHashes": []
+  },
+  "uploaderRules": {
+    "version": 1,
+    "users": [
+      {
+        "mid": 987654321,
+        "name": "示例 UP 主"
+      }
+    ]
+  },
+  "browserExtension": {
+    "version": 3,
+    "enabled": true,
+    "hideHomepageCarousel": true
+  }
+}

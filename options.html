@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PiliPlus 屏蔽联动设置</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body>
+  <main class="options-main">
+    <div class="header">
+      <div>
+        <h1>PiliPlus 屏蔽联动设置</h1>
+        <p class="subtitle">配置保存在浏览器本地，不上传屏蔽名单或弹幕内容。</p>
+      </div>
+      <label class="switch"><input id="enabled" type="checkbox">启用过滤</label>
+    </div>
+
+    <section class="card">
+      <h2>账号名单</h2>
+      <label class="field">
+        <span>屏蔽的 UP 主</span>
+        <textarea id="uploaderUsers" spellcheck="false" placeholder="每行：UID + 可选昵称&#10;123456789 示例 UP 主"></textarea>
+        <small class="hint">用于隐藏首页、搜索、动态和相关推荐；与评论屏蔽名单相互独立。</small>
+      </label>
+      <label class="field">
+        <span>评论与弹幕共用屏蔽账号</span>
+        <textarea id="mutedUsers" spellcheck="false" placeholder="每行：UID + 可选昵称&#10;123456789 示例账号"></textarea>
+        <small class="hint">导出时保持 PiliPlus v3 的 <code>{mid, name?}</code> 结构；UID 会在本地转换为 CRC32。</small>
+      </label>
+      <label class="field">
+        <span>仅有哈希的历史 UID 规则</span>
+        <textarea id="uidHashes" spellcheck="false" placeholder="每行一个 1–8 位十六进制 midHash"></textarea>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>网页版布局</h2>
+      <div class="checks">
+        <label><input id="hideHomepageCarousel" type="checkbox">隐藏首页左侧推广轮播</label>
+      </div>
+      <p class="hint">隐藏 <code>.recommended-swipe</code> 并让视频卡片自动回填空位；关闭后刷新首页即可恢复原布局。</p>
+    </section>
+
+    <section class="card">
+      <h2>广告过滤</h2>
+      <div class="checks">
+        <label><input id="adFilterEnabled" type="checkbox">启用广告过滤</label>
+        <label><input id="adHomepage" type="checkbox">过滤首页推荐广告</label>
+        <label><input id="adDynamic" type="checkbox">过滤动态推广与商品卡</label>
+        <label><input id="adVideo" type="checkbox">隐藏视频页侧栏与条幅广告</label>
+        <label><input id="adRemoteKeywords" type="checkbox">启用远程广告词库</label>
+      </div>
+      <label class="field">
+        <span>自定义广告关键词</span>
+        <textarea id="adCustomKeywords" spellcheck="false" placeholder="每行一条；用于动态内容过滤"></textarea>
+      </label>
+      <div class="row wrap">
+        <button id="syncAdRules" type="button">立即同步广告词库</button>
+        <span id="adRuleStatus" class="hint">正在读取词库状态…</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>弹幕文本规则</h2>
+      <div class="grid2">
+        <label class="field"><span>绝对屏蔽</span><textarea id="absoluteRules" spellcheck="false" placeholder="包含即屏蔽，每行一条"></textarea></label>
+        <label class="field"><span>温和屏蔽</span><textarea id="gentleRules" spellcheck="false" placeholder="整条相等才屏蔽，每行一条"></textarea></label>
+        <label class="field"><span>传统关键词</span><textarea id="keywords" spellcheck="false" placeholder="包含即屏蔽，每行一条"></textarea></label>
+        <label class="field"><span>安全正则</span><textarea id="regex" spellcheck="false" placeholder="每行一条，不需要 / / 包裹"></textarea><small class="hint">高风险或不兼容规则会保留在文件中，但不会参与匹配。</small></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>格式识别</h2>
+      <div class="checks">
+        <label><input id="blockDateStamps" type="checkbox">日期/日期打卡</label>
+        <label><input id="blockTimeStamps" type="checkbox">时间打卡</label>
+        <label><input id="blockPeopleCounts" type="checkbox">纯人数刷屏</label>
+        <label><input id="blockShortCheckIns" type="checkbox">短打卡/考古</label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>导入与诊断</h2>
+      <div class="row wrap">
+        <label class="button" for="importFile">导入 PiliPlus JSON</label>
+        <input id="importFile" type="file" accept="application/json,.json">
+        <button id="exportFile" type="button">导出 v4 JSON</button>
+        <button id="exportBlackMids" type="button">导出 PiliPlus blackMids</button>
+      </div>
+      <p class="hint">“导入 PiliPlus JSON”同时接受完整净化配置和 PiliPlus 导出的纯 UID 黑名单数组；数组导入会与当前 UP 主名单合并。</p>
+      <ul id="diagnostics" class="list" style="margin-top:10px"><li class="muted">暂无诊断</li></ul>
+    </section>
+
+    <section class="card">
+      <h2>关于</h2>
+      <p class="muted">PiliPlus 屏蔽联动 v0.5.0 · GNU GPL v3。完整源代码、许可证与第三方声明均随安装包提供。</p>
+    </section>
+
+    <div class="sticky-actions row between">
+      <div id="message" class="message"></div>
+      <button id="save" class="primary" type="button">保存并应用</button>
+    </div>
+  </main>
+  <script src="src/core.js"></script>
+  <script src="src/ui-common.js"></script>
+  <script src="src/options.js"></script>
+</body>
+</html>

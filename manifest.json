@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "PiliPlus 屏蔽联动",
+  "version": "0.5.0",
+  "description": "导入 PiliPlus 屏蔽配置，过滤 B 站广告、弹幕、评论与指定 UP 主内容。",
+  "minimum_chrome_version": "111",
+  "permissions": [
+    "storage",
+    "alarms",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://*.bilibili.com/*",
+    "https://raw.githubusercontent.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "action": {
+    "default_title": "PiliPlus 屏蔽联动",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["*://*.bilibili.com/*"],
+      "js": ["src/core.js", "src/page-core.js", "src/page-main.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://*.bilibili.com/*"],
+      "js": ["src/content-core.js", "src/content.js", "src/interactions.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

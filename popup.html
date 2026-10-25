@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PiliPlus 屏蔽联动</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body class="popup">
+  <main>
+    <div class="header">
+      <div>
+        <h1>PiliPlus 屏蔽联动</h1>
+        <p class="subtitle">广告 · 弹幕 · 评论 · UP 主内容净化</p>
+      </div>
+      <label class="switch"><input id="enabled" type="checkbox">启用</label>
+    </div>
+
+    <section class="card">
+      <div class="row between">
+        <div class="row"><span id="statusDot" class="status-dot"></span><strong id="statusText">正在连接页面…</strong></div>
+        <button id="resetStats" type="button">清空统计</button>
+      </div>
+      <div class="metrics">
+        <div class="metric"><strong id="segments">0</strong><span>已处理分段</span></div>
+        <div class="metric"><strong id="total">0</strong><span>读取弹幕</span></div>
+        <div class="metric"><strong id="blocked">0</strong><span>已拦截</span></div>
+      </div>
+      <div class="row wrap connection-actions">
+        <button id="diagnoseConnection" type="button">连接诊断</button>
+        <button id="reconnectPage" type="button">重新连接</button>
+      </div>
+      <div id="interactionSummary" class="muted interaction-summary">净化助手等待页面内容</div>
+      <div id="layoutSummary" class="muted interaction-summary">首页布局等待检测</div>
+    </section>
+
+    <section id="diagnosisCard" class="card hidden">
+      <div class="row between">
+        <h2>连接诊断</h2>
+        <button id="copyDiagnosis" type="button" disabled>复制诊断</button>
+      </div>
+      <div id="diagnosisSummary" class="muted">尚未运行诊断</div>
+      <ul id="diagnosisList" class="diagnosis-list"></ul>
+    </section>
+
+    <section class="card">
+      <h2>配置</h2>
+      <div id="ruleSummary" class="muted">正在读取…</div>
+      <div class="row wrap" style="margin-top:10px">
+        <label class="button" for="importFile">导入 JSON</label>
+        <input id="importFile" type="file" accept="application/json,.json">
+        <button id="exportFile" type="button">导出 v4</button>
+        <button id="openOptions" type="button">管理规则</button>
+      </div>
+      <div id="message" class="message"></div>
+    </section>
+
+    <section class="card">
+      <div class="row between"><h2>最近命中</h2><span id="diagnosticCount" class="muted"></span></div>
+      <ul id="hits" class="list"><li class="muted">暂无命中</li></ul>
+    </section>
+  </main>
+  <script src="src/core.js"></script>
+  <script src="src/ui-common.js"></script>
+  <script src="src/popup.js"></script>
+</body>
+</html>
