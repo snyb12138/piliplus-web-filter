@@ -111,10 +111,13 @@ test('uploader blocklist normalizes independently from comment users', () => {
 test('homepage carousel layout preference defaults on and round-trips off', () => {
   const defaults = Core.defaultConfig();
   assert.equal(defaults.browserExtension.hideHomepageCarousel, true);
+  assert.equal(defaults.browserExtension.videoPageDomEnhancements, false);
   defaults.browserExtension.hideHomepageCarousel = false;
+  defaults.browserExtension.videoPageDomEnhancements = true;
   const restored = Core.parseConfigText(Core.exportConfig(defaults)).config;
   assert.equal(restored.browserExtension.hideHomepageCarousel, false);
-  assert.equal(restored.browserExtension.version, 4);
+  assert.equal(restored.browserExtension.videoPageDomEnhancements, true);
+  assert.equal(restored.browserExtension.version, 5);
 });
 
 test('advertising preferences and remote keywords build a deduplicated runtime', () => {

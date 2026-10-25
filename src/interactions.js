@@ -328,7 +328,13 @@
     return text && keywords.some((keyword) => keyword && text.includes(keyword));
   }
 
+  function domEnhancementsAllowed() {
+    const isVideoPage = location.hostname === 'www.bilibili.com' && /^\/(?:zh-(?:Hans|CN)\/)?video\//u.test(location.pathname);
+    return !isVideoPage || Api.getConfig().browserExtension.videoPageDomEnhancements === true;
+  }
+
   function scanAdRoot(root) {
+    if (!domEnhancementsAllowed()) return;
     const rules = Api.getAdFilter();
     if (!rules.enabled) return;
     let cards = [];
@@ -632,6 +638,7 @@
   }
 
   function scanCommentRoot(root) {
+    if (!domEnhancementsAllowed()) return;
     let anchors;
     try {
       anchors = root instanceof Element && root.matches('a[href*="space.bilibili.com/"]') ? [root] : [];
@@ -736,6 +743,7 @@
   }
 
   function scanUploaderRoot(root) {
+    if (!domEnhancementsAllowed()) return;
     let anchors;
     try {
       anchors = root instanceof Element && root.matches('a[href*="space.bilibili.com/"]') ? [root] : [];

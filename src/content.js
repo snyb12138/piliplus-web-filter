@@ -81,6 +81,9 @@
       adsApiDropped: 0,
       routeScanDeferrals: 0,
     },
+    compatibility: {
+      videoPageDomEnhancements: false,
+    },
   };
 
   function post(kind, payload = {}) {
@@ -105,6 +108,7 @@
 
   function applyNormalizedConfig(normalized, adRuleCache = {}) {
     config = normalized.config;
+    status.compatibility.videoPageDomEnhancements = config.browserExtension.videoPageDomEnhancements === true;
     normalized.diagnostics.forEach(recordDiagnostic);
     runtime = Core.buildRuntimeRules(config, { adKeywords: adRuleCache.keywords || [] });
     runtime.diagnostics.forEach(recordDiagnostic);

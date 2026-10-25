@@ -54,6 +54,9 @@ if (interactionSource.includes('data-pbp-video-ad-filter="1"] .strip-ad')) {
 if (!interactionSource.includes('ROUTE_SETTLE_MS') || !interactionSource.includes('routeScanDeferrals')) {
   throw new Error('SPA route stabilization is missing');
 }
+if (!interactionSource.includes('domEnhancementsAllowed') || !fs.readFileSync(path.join(root, 'options.html'), 'utf8').includes('id="videoPageDomEnhancements"')) {
+  throw new Error('video page compatibility mode is missing');
+}
 if (!fs.existsSync(path.join(root, 'config/ad-keywords.json'))) throw new Error('bundled advertising keywords are missing');
 if (!manifest.permissions?.includes('alarms')) throw new Error('advertising rule synchronization requires alarms');
 if (!fs.readFileSync(path.join(root, 'options.html'), 'utf8').includes('id="hideHomepageCarousel"')) {

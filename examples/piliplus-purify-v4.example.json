@@ -36,8 +36,9 @@
     ]
   },
   "browserExtension": {
-    "version": 3,
+    "version": 5,
     "enabled": true,
-    "hideHomepageCarousel": true
+    "hideHomepageCarousel": true,
+    "videoPageDomEnhancements": false
   }
 }

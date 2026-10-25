@@ -2,7 +2,7 @@
   'use strict';
   const Core = globalThis.PiliPlusPurifyCore;
   const Ui = globalThis.PiliPlusPurifyUi;
-  const ids = ['enabled', 'hideHomepageCarousel', 'adFilterEnabled', 'adHomepage', 'adDynamic', 'adVideo', 'adRemoteKeywords', 'adCustomKeywords', 'syncAdRules', 'adRuleStatus', 'mutedUsers', 'uploaderUsers', 'uidHashes', 'absoluteRules', 'gentleRules', 'keywords', 'regex', 'blockDateStamps', 'blockTimeStamps', 'blockPeopleCounts', 'blockShortCheckIns', 'importFile', 'exportFile', 'exportBlackMids', 'diagnostics', 'message', 'save'];
+  const ids = ['enabled', 'hideHomepageCarousel', 'videoPageDomEnhancements', 'adFilterEnabled', 'adHomepage', 'adDynamic', 'adVideo', 'adRemoteKeywords', 'adCustomKeywords', 'syncAdRules', 'adRuleStatus', 'mutedUsers', 'uploaderUsers', 'uidHashes', 'absoluteRules', 'gentleRules', 'keywords', 'regex', 'blockDateStamps', 'blockTimeStamps', 'blockPeopleCounts', 'blockShortCheckIns', 'importFile', 'exportFile', 'exportBlackMids', 'diagnostics', 'message', 'save'];
   const elements = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
   let config;
 
@@ -45,6 +45,7 @@
   function render() {
     elements.enabled.checked = config.browserExtension.enabled;
     elements.hideHomepageCarousel.checked = config.browserExtension.hideHomepageCarousel;
+    elements.videoPageDomEnhancements.checked = config.browserExtension.videoPageDomEnhancements;
     const adFilter = config.browserExtension.adFilter;
     elements.adFilterEnabled.checked = adFilter.enabled;
     elements.adHomepage.checked = adFilter.homepage;
@@ -93,6 +94,7 @@
         ...config.browserExtension,
         enabled: elements.enabled.checked,
         hideHomepageCarousel: elements.hideHomepageCarousel.checked,
+        videoPageDomEnhancements: elements.videoPageDomEnhancements.checked,
         adFilter: {
           ...config.browserExtension.adFilter,
           enabled: elements.adFilterEnabled.checked,
