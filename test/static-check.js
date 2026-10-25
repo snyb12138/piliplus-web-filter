@@ -45,6 +45,12 @@ if (!interactionSource.includes('[class*="recommended-container_"]') || !interac
 if (!interactionSource.includes('observeListContainer') || !interactionSource.includes('adsDomHidden')) {
   throw new Error('continuous advertising DOM fallback is missing');
 }
+if (!interactionSource.includes("document.readyState === 'loading'") || !interactionSource.includes('PAGE_CHROME_SELECTOR')) {
+  throw new Error('hydration-safe interaction startup is missing');
+}
+if (interactionSource.includes('data-pbp-video-ad-filter="1"] .strip-ad')) {
+  throw new Error('video advertising CSS must not hide generic strip-ad nodes globally');
+}
 if (!fs.existsSync(path.join(root, 'config/ad-keywords.json'))) throw new Error('bundled advertising keywords are missing');
 if (!manifest.permissions?.includes('alarms')) throw new Error('advertising rule synchronization requires alarms');
 if (!fs.readFileSync(path.join(root, 'options.html'), 'utf8').includes('id="hideHomepageCarousel"')) {

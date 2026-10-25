@@ -77,6 +77,26 @@
     '.video-card-ad-small',
     '.strip-ad',
   ].join(',');
+  const PAGE_CHROME_SELECTOR = [
+    'header',
+    'nav',
+    '#bili-header-container',
+    '.bili-header',
+    '.mini-header',
+    '.international-header',
+    '.nav-searchform',
+    '[class*="header__bar"]',
+    '[class*="header-channel"]',
+  ].join(',');
+  const VIDEO_CONTENT_REGION_SELECTOR = [
+    '#mirror-vdcon',
+    '.left-container',
+    '.right-container',
+    '.video-container-v1',
+    '.video-container',
+    '.video-page-card',
+    '.recommend-list-v1',
+  ].join(',');
   const observedRoots = new Set();
   const pendingRoots = new Set();
   const observedListContainers = new WeakSet();
@@ -225,10 +245,6 @@
       html[data-pbp-compact-home-grid="1"] [class*="recommended-container_"] .container > .bili-feed-card:empty{
         display:none!important;
       }
-      html[data-pbp-video-ad-filter="1"] .video-card-ad-small,
-      html[data-pbp-video-ad-filter="1"] .strip-ad{
-        display:none!important;
-      }
     `;
     (document.head || document.documentElement).append(style);
   }
@@ -238,14 +254,11 @@
     const extension = Api.getConfig().browserExtension;
     const enabled = isHomepage && extension.enabled !== false && extension.hideHomepageCarousel !== false;
     const compactGrid = isHomepage && extension.enabled !== false;
-    const adFilter = extension.adFilter || {};
-    const videoAds = extension.enabled !== false && adFilter.enabled !== false && adFilter.video !== false;
     document.documentElement.toggleAttribute('data-pbp-hide-home-carousel', enabled);
     if (enabled) document.documentElement.setAttribute('data-pbp-hide-home-carousel', '1');
     document.documentElement.toggleAttribute('data-pbp-compact-home-grid', compactGrid);
     if (compactGrid) document.documentElement.setAttribute('data-pbp-compact-home-grid', '1');
-    document.documentElement.toggleAttribute('data-pbp-video-ad-filter', videoAds);
-    if (videoAds) document.documentElement.setAttribute('data-pbp-video-ad-filter', '1');
+    document.documentElement.removeAttribute('data-pbp-video-ad-filter');
     let count = 0;
     try {
       count = document.querySelectorAll(HOMEPAGE_CAROUSEL_SELECTOR).length;
@@ -293,6 +306,16 @@
     return labels.some((label) => /^(?:广告|推广)$/u.test((label.textContent || '').trim()));
   }
 
+  function isPageChromeElement(element) {
+    return Boolean(closestAcrossRoots(element, PAGE_CHROME_SELECTOR));
+  }
+
+  function isVideoAdCard(card) {
+    if (!(card instanceof Element) || !card.matches('.video-card-ad-small,.strip-ad')) return false;
+    if (isPageChromeElement(card)) return false;
+    return Boolean(closestAcrossRoots(card, VIDEO_CONTENT_REGION_SELECTOR));
+  }
+
   function dynamicKeywordHit(card, keywords) {
     if (!card.matches('.bili-dyn-item,.dynamic-card-item')) return false;
     if (card.querySelector('[class*="goods"],[class*="shop"],[data-type="goods"]')) return true;
@@ -314,7 +337,7 @@
     for (const card of cards) {
       if ((homepage && rules.homepage !== false && hasAdMarker(card)) ||
           (rules.dynamic !== false && dynamicKeywordHit(card, rules.keywords || [])) ||
-          (rules.video !== false && card.matches('.video-card-ad-small,.strip-ad'))) {
+          (rules.video !== false && isVideoAdCard(card))) {
         hideAdCard(card);
       }
     }
@@ -718,7 +741,7 @@
     const grouped = new Map();
     for (const anchor of anchors) {
       const mid = parseSpaceMid(anchor);
-      if (!mid || closestAcrossRoots(anchor, COMMENT_REGION_SELECTOR)) continue;
+      if (!mid || closestAcrossRoots(anchor, COMMENT_REGION_SELECTOR) || isPageChromeElement(anchor)) continue;
       const nearestContainer = closestAcrossRoots(anchor, UPLOADER_CARD_SELECTOR);
       if (!nearestContainer) continue;
       const container = findHomepageGridItem(nearestContainer);
@@ -831,7 +854,10 @@
   }
 
   function startInteractions() {
-    if (!document.documentElement) return requestAnimationFrame(startInteractions);
+    if (!document.documentElement || document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', startInteractions, { once: true });
+      return;
+    }
     installDanmakuPointerStyle();
     installLayoutStyle();
     applyLayoutPreferences();
