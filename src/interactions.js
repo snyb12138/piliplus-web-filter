@@ -51,8 +51,18 @@
   const HOMEPAGE_CAROUSEL_SELECTOR = [
     '.container.is-version8 > .recommended-swipe',
     '.recommended-container_floor-aside .container > .recommended-swipe',
+    '[class*="recommended-container_"] .container > .recommended-swipe',
   ].join(',');
-  const HOMEPAGE_GRID_SELECTOR = '.recommended-container_floor-aside .container.is-version8';
+  const HOMEPAGE_REGION_SELECTOR = [
+    '.recommended-container_floor-aside',
+    '.recommended-container_overseas',
+    '[class*="recommended-container_"]',
+  ].join(',');
+  const HOMEPAGE_GRID_SELECTOR = [
+    '.recommended-container_floor-aside .container',
+    '.recommended-container_overseas .container',
+    '[class*="recommended-container_"] .container',
+  ].join(',');
   const LIST_CONTAINER_SELECTOR = [
     HOMEPAGE_GRID_SELECTOR,
     '.bili-dyn-list__items',
@@ -193,14 +203,26 @@
     style.id = 'pbp-layout-style';
     style.textContent = `
       html[data-pbp-hide-home-carousel="1"] .container.is-version8 > .recommended-swipe,
-      html[data-pbp-hide-home-carousel="1"] .recommended-container_floor-aside .container > .recommended-swipe{
+      html[data-pbp-hide-home-carousel="1"] .recommended-container_floor-aside .container > .recommended-swipe,
+      html[data-pbp-hide-home-carousel="1"] [class*="recommended-container_"] .container > .recommended-swipe{
         display:none!important;
       }
-      html[data-pbp-hide-home-carousel="1"] .recommended-container_floor-aside .container.is-version8{
+      html[data-pbp-hide-home-carousel="1"] .recommended-container_floor-aside .container.is-version8,
+      html[data-pbp-hide-home-carousel="1"] .recommended-container_floor-aside .container:has(> .recommended-swipe),
+      html[data-pbp-hide-home-carousel="1"] [class*="recommended-container_"] .container.is-version8,
+      html[data-pbp-hide-home-carousel="1"] [class*="recommended-container_"] .container:has(> .recommended-swipe){
         grid-auto-flow:row dense!important;
       }
-      html[data-pbp-compact-home-grid="1"] .recommended-container_floor-aside .container.is-version8 > .feed-card:empty,
-      html[data-pbp-compact-home-grid="1"] .recommended-container_floor-aside .container.is-version8 > .bili-feed-card:empty{
+      html[data-pbp-hide-home-carousel="1"] .recommended-container_floor-aside .container.is-version8 > :is(.feed-card,.bili-feed-card),
+      html[data-pbp-hide-home-carousel="1"] .recommended-container_floor-aside .container:has(> .recommended-swipe) > :is(.feed-card,.bili-feed-card),
+      html[data-pbp-hide-home-carousel="1"] [class*="recommended-container_"] .container.is-version8 > :is(.feed-card,.bili-feed-card),
+      html[data-pbp-hide-home-carousel="1"] [class*="recommended-container_"] .container:has(> .recommended-swipe) > :is(.feed-card,.bili-feed-card){
+        grid-area:auto!important;
+        grid-column:auto!important;
+        grid-row:auto!important;
+      }
+      html[data-pbp-compact-home-grid="1"] [class*="recommended-container_"] .container > .feed-card:empty,
+      html[data-pbp-compact-home-grid="1"] [class*="recommended-container_"] .container > .bili-feed-card:empty{
         display:none!important;
       }
       html[data-pbp-video-ad-filter="1"] .video-card-ad-small,
@@ -212,7 +234,7 @@
   }
 
   function applyLayoutPreferences() {
-    const isHomepage = location.hostname === 'www.bilibili.com' && location.pathname === '/';
+    const isHomepage = isHomepageLocation();
     const extension = Api.getConfig().browserExtension;
     const enabled = isHomepage && extension.enabled !== false && extension.hideHomepageCarousel !== false;
     const compactGrid = isHomepage && extension.enabled !== false;
@@ -288,7 +310,7 @@
     } catch (_) {
       return;
     }
-    const homepage = location.hostname === 'www.bilibili.com' && location.pathname === '/';
+    const homepage = isHomepageLocation();
     for (const card of cards) {
       if ((homepage && rules.homepage !== false && hasAdMarker(card)) ||
           (rules.dynamic !== false && dynamicKeywordHit(card, rules.keywords || [])) ||
@@ -306,9 +328,47 @@
     for (const root of observedRoots) scanAdRoot(root);
   }
 
+  function isHomepageLocation() {
+    return location.hostname === 'www.bilibili.com' && /^(?:\/(?:zh-(?:Hans|CN))?)?\/?$/u.test(location.pathname);
+  }
+
+  function isHomepageGrid(element) {
+    if (!(element instanceof Element) || !element.matches('.container')) return false;
+    if (!closestAcrossRoots(element, HOMEPAGE_REGION_SELECTOR)) return false;
+    if (element.matches('.is-version8')) return true;
+    for (const child of element.children) {
+      if (child.matches('.recommended-swipe,.feed-card,.bili-feed-card')) return true;
+    }
+    return false;
+  }
+
+  function findHomepageGrid(container) {
+    let node = container;
+    while (node) {
+      if (isHomepageGrid(node)) return node;
+      if (node.parentElement) {
+        node = node.parentElement;
+        continue;
+      }
+      const root = node.getRootNode?.();
+      node = root instanceof ShadowRoot ? root.host : null;
+    }
+    return null;
+  }
+
+  function homepageGrids() {
+    let candidates = [];
+    try {
+      candidates = [...document.querySelectorAll(HOMEPAGE_GRID_SELECTOR)];
+    } catch (_) {
+      return [];
+    }
+    return candidates.filter(isHomepageGrid);
+  }
+
   function findHomepageGridItem(container) {
     if (!(container instanceof Element)) return container;
-    const grid = closestAcrossRoots(container, HOMEPAGE_GRID_SELECTOR);
+    const grid = findHomepageGrid(container);
     if (!grid) return container;
     let item = container;
     while (item.parentElement && item.parentElement !== grid) item = item.parentElement;
@@ -326,15 +386,10 @@
   }
 
   function compactHomepageGrid() {
-    const isHomepage = location.hostname === 'www.bilibili.com' && location.pathname === '/';
+    const isHomepage = isHomepageLocation();
     if (!isHomepage || Api.getConfig().browserExtension.enabled === false) return 0;
     let hidden = 0;
-    let grids = [];
-    try {
-      grids = [...document.querySelectorAll(HOMEPAGE_GRID_SELECTOR)];
-    } catch (_) {
-      return 0;
-    }
+    const grids = homepageGrids();
     for (const grid of grids) {
       for (const item of grid.children) {
         if (!(item instanceof Element) || item.matches('.recommended-swipe')) continue;
@@ -712,6 +767,7 @@
 
   function observeListContainer(container) {
     if (!(container instanceof Element) || observedListContainers.has(container)) return;
+    if (container.matches(HOMEPAGE_GRID_SELECTOR) && !isHomepageGrid(container)) return;
     observedListContainers.add(container);
     const observer = new MutationObserver((records) => {
       for (const record of records) {

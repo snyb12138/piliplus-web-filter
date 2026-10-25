@@ -36,8 +36,11 @@ const interactionSource = fs.readFileSync(path.join(root, 'src/interactions.js')
 if (!interactionSource.includes('.container.is-version8 > .recommended-swipe')) {
   throw new Error('homepage carousel selector is missing');
 }
-if (!interactionSource.includes('findHomepageGridItem') || !interactionSource.includes('.feed-card:empty')) {
+if (!interactionSource.includes('findHomepageGridItem') || !interactionSource.includes('.feed-card:empty') || !interactionSource.includes('isHomepageGrid')) {
   throw new Error('homepage grid compaction is missing');
+}
+if (!interactionSource.includes('[class*="recommended-container_"]') || !interactionSource.includes('grid-area:auto!important')) {
+  throw new Error('homepage grid variant compaction is missing');
 }
 if (!interactionSource.includes('observeListContainer') || !interactionSource.includes('adsDomHidden')) {
   throw new Error('continuous advertising DOM fallback is missing');
