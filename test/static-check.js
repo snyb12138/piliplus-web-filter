@@ -33,6 +33,7 @@ const pageCoreSource = fs.readFileSync(path.join(root, 'src/core.js'));
 const isolatedCoreSource = fs.readFileSync(path.join(root, 'src/content-core.js'));
 if (!pageCoreSource.equals(isolatedCoreSource)) throw new Error('content-core.js must remain byte-identical to core.js');
 const interactionSource = fs.readFileSync(path.join(root, 'src/interactions.js'), 'utf8');
+const pageMainSource = fs.readFileSync(path.join(root, 'src/page-main.js'), 'utf8');
 if (!interactionSource.includes('.container.is-version8 > .recommended-swipe')) {
   throw new Error('homepage carousel selector is missing');
 }
@@ -47,6 +48,9 @@ if (!interactionSource.includes('observeListContainer') || !interactionSource.in
 }
 if (!interactionSource.includes("card.matches('.floor-single-card')")) {
   throw new Error('homepage official promotion card filter is missing');
+}
+if (!pageMainSource.includes("if (jsonKind === 'homepage')") || !pageMainSource.includes('homepageResponsesPassedThrough')) {
+  throw new Error('homepage feed pass-through guard is missing');
 }
 if (!interactionSource.includes("document.readyState === 'loading'") || !interactionSource.includes('PAGE_CHROME_SELECTOR')) {
   throw new Error('hydration-safe interaction startup is missing');

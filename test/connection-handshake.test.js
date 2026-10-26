@@ -144,6 +144,9 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.fetchHookInstalled, true);
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.xhrHookInstalled, true);
 
+  await windowProxy.fetch('https://api.bilibili.com/x/web-interface/index/top/feed/rcmd');
+  assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageResponsesPassedThrough, 1);
+
   const elem = concat(wireVarint(2, 469291), wireVarint(3, 1), wireBytes(6, 'cbf43926'), wireBytes(7, '点击屏蔽测试'));
   fetchBytes = wireBytes(1, elem);
   await windowProxy.fetch('https://api.bilibili.com/x/v2/dm/wbi/web/seg.so?segment_index=2');

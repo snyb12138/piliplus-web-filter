@@ -28,6 +28,7 @@
     uploaderResponsesSeen: 0,
     uploaderItemsDropped: 0,
     adItemsDropped: 0,
+    homepageResponsesPassedThrough: 0,
     failure: null,
   };
   Object.defineProperty(globalThis, MARKER_NAME, { value: diagnostic, configurable: true });
@@ -219,6 +220,10 @@
   window.fetch = function piliplusPurifyFetch(...args) {
     const request = args[0];
     const jsonKind = classifyJsonResponse(request);
+    if (jsonKind === 'homepage') {
+      diagnostic.homepageResponsesPassedThrough += 1;
+      return nativeFetch(...args);
+    }
     if (jsonKind) {
       return waitForInitialRules().then(() => nativeFetch(...args)).then((response) => filterContentResponse(response, jsonKind));
     }
