@@ -108,7 +108,7 @@
   const adRecords = new Set();
   const ROUTE_SETTLE_MS = 1500;
   const INCREMENTAL_SCAN_DELAY_MS = 80;
-  const HOMEPAGE_REFRESH_SETTLE_MS = 1200;
+  const HOMEPAGE_REFRESH_RELOAD_DELAY_MS = 80;
   const HOMEPAGE_GRID_SLOTS = 24;
   const HOMEPAGE_VIDEO_SLOTS = 22;
   const FEEDBACK_URL = 'https://github.com/snyb12138/piliplus-web-filter/issues';
@@ -117,8 +117,7 @@
   let activeRoute = `${location.origin}${location.pathname}${location.search}`;
   let routeHoldUntil = 0;
   let danmakuMenuBusy = false;
-  let homepageRefreshHoldUntil = 0;
-  let homepageRefreshTimer = null;
+  let homepageRefreshReloading = false;
   let uiHost;
   let uiRoot;
   let toastTimer;
@@ -662,7 +661,7 @@
     const grids = homepageGrids();
     const activeGrid = enabled ? activeHomepageGrid(grids) : null;
     const statsPanelMounted = ensureHomepageStatsPanel(enabled, activeGrid);
-    const refreshSettling = enabled && Date.now() < homepageRefreshHoldUntil;
+    const refreshSettling = enabled && homepageRefreshReloading;
     let visible = 0;
     let overflowHidden = 0;
     let pendingHidden = 0;
@@ -703,20 +702,19 @@
     };
   }
 
-  function beginHomepageRefreshSettle(event) {
+  function handleHomepageRefreshClick(event) {
     if (!isHomepageLocation() || Api.getConfig().browserExtension.homepagePagedMode === false) return;
     const target = event.target instanceof Element ? event.target : null;
     const button = target?.closest('.feed-roll-btn');
     if (!button || target.closest('.flexible-roll-btn,.flexible-roll-btn-inner')) return;
-    homepageRefreshHoldUntil = Date.now() + HOMEPAGE_REFRESH_SETTLE_MS;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    if (homepageRefreshReloading) return;
+    homepageRefreshReloading = true;
     document.documentElement.setAttribute('data-pbp-home-refreshing', '1');
     clearHomepagePageMarkers();
-    clearTimeout(homepageRefreshTimer);
-    homepageRefreshTimer = setTimeout(() => {
-      homepageRefreshHoldUntil = 0;
-      document.documentElement.removeAttribute('data-pbp-home-refreshing');
-      scheduleContentScan(document);
-    }, HOMEPAGE_REFRESH_SETTLE_MS + 30);
+    setTimeout(() => location.reload(), HOMEPAGE_REFRESH_RELOAD_DELAY_MS);
   }
 
   function inspectHomepageGridLayout() {
@@ -1220,7 +1218,6 @@
     document.addEventListener('click', (event) => {
       handleDanmakuClick(event).catch((error) => showToast(`弹幕净化操作失败：${error.message}`));
     }, true);
-    document.addEventListener('click', beginHomepageRefreshSettle, true);
     observeRoot(document);
     setInterval(() => {
       discoverShadowRoots(document);
@@ -1245,5 +1242,8 @@
     });
   }
 
+  // Register at document_start so the compatibility refresh runs before the
+  // site's component handler can start its fixed 10-slot replacement cycle.
+  window.addEventListener('click', handleHomepageRefreshClick, true);
   startInteractions();
 })();

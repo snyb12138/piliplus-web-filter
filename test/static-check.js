@@ -76,7 +76,7 @@ if (!interactionSource.includes('HOMEPAGE_GRID_SLOTS = 24') || !interactionSourc
 if (!interactionSource.includes('data-pbp-home-stats') || !interactionSource.includes('FEEDBACK_URL') || !interactionSource.includes('getStatusSnapshot')) {
   throw new Error('homepage purification statistics panel is missing');
 }
-if (!interactionSource.includes('activeHomepageGrid') || !interactionSource.includes('HOMEPAGE_REFRESH_SETTLE_MS') || !interactionSource.includes('.flexible-roll-btn-inner')) {
+if (!interactionSource.includes('activeHomepageGrid') || !interactionSource.includes('HOMEPAGE_REFRESH_RELOAD_DELAY_MS') || !interactionSource.includes('location.reload()') || !interactionSource.includes('.flexible-roll-btn-inner')) {
   throw new Error('homepage native refresh stabilization is missing');
 }
 if (!fs.existsSync(path.join(root, 'config/ad-keywords.json'))) throw new Error('bundled advertising keywords are missing');

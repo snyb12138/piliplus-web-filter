@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PiliPlus 屏蔽联动",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "导入 PiliPlus 屏蔽配置，过滤 B 站广告、弹幕、评论与指定 UP 主内容。",
   "minimum_chrome_version": "111",
   "permissions": [
