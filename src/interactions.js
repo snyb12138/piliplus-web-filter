@@ -293,9 +293,9 @@
       .pbp-home-custom-cover:hover img{transform:scale(1.025)}
       .pbp-home-custom-duration{position:absolute;right:6px;bottom:5px;padding:1px 5px;border-radius:4px;background:rgba(0,0,0,.64);color:#fff;font-size:12px;line-height:18px}
       .pbp-home-custom-info{padding-top:9px;min-width:0}
-      .pbp-home-custom-title{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;min-height:44px;color:#18191c;font-size:15px;line-height:22px;text-decoration:none}
+      .pbp-home-custom-title{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;min-height:44px;color:var(--text1,#18191c);font-size:15px;line-height:22px;text-decoration:none}
       .pbp-home-custom-title:hover{color:#00aeec}
-      .pbp-home-custom-meta{display:flex;align-items:center;gap:8px;margin-top:4px;min-width:0;color:#9499a0;font-size:13px;line-height:20px}
+      .pbp-home-custom-meta{display:flex;align-items:center;gap:8px;margin-top:4px;min-width:0;color:var(--text3,#9499a0);font-size:13px;line-height:20px}
       .pbp-home-custom-owner{overflow:hidden;min-width:0;color:inherit;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}
       .pbp-home-custom-owner:hover{color:#00aeec}
       .pbp-home-custom-stat{flex:none;white-space:nowrap}
@@ -331,7 +331,11 @@
       html[class*="dark"] [data-pbp-home-stats="1"]{border-color:rgba(255,255,255,.08);background:rgba(31,33,36,.96);color:#f1f2f3;box-shadow:none}
       html[class*="dark"] [data-pbp-home-stats="1"] .pbp-stat{background:rgba(0,174,236,.12)}
       html[class*="dark"] [data-pbp-home-stats="1"] .pbp-stat-label{color:#a2a7ae}
+      :is(html[class*="dark"],html[data-theme="dark"],html[theme="dark"],body[class*="dark"]) .pbp-home-custom-title{color:var(--text1,#f1f2f3)}
+      :is(html[class*="dark"],html[data-theme="dark"],html[theme="dark"],body[class*="dark"]) .pbp-home-custom-meta{color:var(--text3,#a2a7ae)}
       @media(prefers-color-scheme:dark){
+        .pbp-home-custom-title{color:var(--text1,#f1f2f3)}
+        .pbp-home-custom-meta{color:var(--text3,#a2a7ae)}
         [data-pbp-home-stats="1"]{border-color:rgba(255,255,255,.08)!important;background:rgba(31,33,36,.96)!important;color:#f1f2f3!important;box-shadow:none!important}
         [data-pbp-home-stats="1"] .pbp-stat{background:rgba(0,174,236,.12)!important}
         [data-pbp-home-stats="1"] .pbp-stat-label{color:#a2a7ae!important}
