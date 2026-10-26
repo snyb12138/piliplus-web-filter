@@ -38,9 +38,11 @@
       <h2>网页版布局</h2>
       <div class="checks">
         <label><input id="hideHomepageCarousel" type="checkbox">隐藏首页左侧推广轮播</label>
+        <label><input id="homepagePagedMode" type="checkbox">固定首页为 6×4 推荐页，使用原生“换一换”</label>
         <label><input id="videoPageDomEnhancements" type="checkbox">启用视频页 DOM 增强（实验性）</label>
       </div>
       <p class="hint">隐藏 <code>.recommended-swipe</code> 并让视频卡片自动回填空位；关闭后刷新首页即可恢复原布局。</p>
+      <p class="hint">固定推荐页会先补足 24 个有效视频，再停止无限滚动；右侧 B 站原生“换一换”用于获取下一批。</p>
       <p class="hint">视频页 DOM 增强包括评论/UP 主快捷按钮和视频页 DOM 广告兜底。默认关闭以避免影响 B 站 SPA 页头；弹幕数据过滤不受影响。</p>
     </section>
 
@@ -97,7 +99,7 @@
 
     <section class="card">
       <h2>关于</h2>
-      <p class="muted">PiliPlus 屏蔽联动 v0.5.9 · GNU GPL v3。完整源代码、许可证与第三方声明均随安装包提供。</p>
+      <p class="muted">PiliPlus 屏蔽联动 v0.6.0 · GNU GPL v3。完整源代码、许可证与第三方声明均随安装包提供。</p>
     </section>
 
     <div class="sticky-actions row between">

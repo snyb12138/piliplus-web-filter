@@ -13,7 +13,7 @@
 
   const SCHEMA = 'piliplus-purify';
   const FORMAT_VERSION = 4;
-  const EXTENSION_CONFIG_VERSION = 5;
+  const EXTENSION_CONFIG_VERSION = 6;
   const UPLOADER_RULES_VERSION = 1;
   const MAX_REGEX_LENGTH = 256;
   const MAX_REGEX_INPUT_LENGTH = 512;
@@ -217,6 +217,7 @@
         version: EXTENSION_CONFIG_VERSION,
         enabled: extensionRaw.enabled !== false,
         hideHomepageCarousel: extensionRaw.hideHomepageCarousel !== false,
+        homepagePagedMode: extensionRaw.homepagePagedMode !== false,
         videoPageDomEnhancements: extensionRaw.videoPageDomEnhancements === true,
         adFilter: {
           ...adFilterRaw,

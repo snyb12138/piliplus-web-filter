@@ -70,9 +70,15 @@ if (!interactionSource.includes('data-pbp-home-grid') || !interactionSource.incl
 if (!interactionSource.includes('inspectHomepageGridLayout') || !fs.readFileSync(path.join(root, 'src/content.js'), 'utf8').includes('firstRowOffsetSpread')) {
   throw new Error('homepage grid diagnostics are missing');
 }
+if (!interactionSource.includes('HOMEPAGE_PAGE_SIZE = 24') || !interactionSource.includes('data-pbp-home-paged-ready') || !interactionSource.includes('applyHomepagePageLimit')) {
+  throw new Error('homepage 6x4 paged mode is missing');
+}
 if (!fs.existsSync(path.join(root, 'config/ad-keywords.json'))) throw new Error('bundled advertising keywords are missing');
 if (!manifest.permissions?.includes('alarms')) throw new Error('advertising rule synchronization requires alarms');
 if (!fs.readFileSync(path.join(root, 'options.html'), 'utf8').includes('id="hideHomepageCarousel"')) {
   throw new Error('homepage carousel option is missing');
+}
+if (!fs.readFileSync(path.join(root, 'options.html'), 'utf8').includes('id="homepagePagedMode"')) {
+  throw new Error('homepage paged mode option is missing');
 }
 console.log(`Static check passed: ${referenced.size} manifest files, ${fs.readdirSync(path.join(root, 'src')).filter((name) => name.endsWith('.js')).length} scripts.`);

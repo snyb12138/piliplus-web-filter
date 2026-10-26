@@ -108,6 +108,7 @@
   const adRecords = new Set();
   const ROUTE_SETTLE_MS = 1500;
   const INCREMENTAL_SCAN_DELAY_MS = 80;
+  const HOMEPAGE_PAGE_SIZE = 24;
   let scanScheduled = false;
   let scanTimer = null;
   let activeRoute = `${location.origin}${location.pathname}${location.search}`;
@@ -262,6 +263,13 @@
       html[data-pbp-compact-home-grid="1"] [class*="recommended-container_"] .container > .bili-feed-card:empty{
         display:none!important;
       }
+      html[data-pbp-home-paged="1"] [data-pbp-home-grid="1"] > [data-pbp-page-overflow="1"],
+      html[data-pbp-home-paged="1"] [data-pbp-home-grid="1"] > [data-pbp-page-pending="1"]{
+        display:none!important;
+      }
+      html[data-pbp-home-paged-ready="1"] [data-pbp-home-grid="1"] .load-more-anchor{
+        display:none!important;
+      }
     `;
     (document.head || document.documentElement).append(style);
   }
@@ -282,6 +290,8 @@
     } catch (_) {
       // Keep layout filtering fail-open if Bilibili changes selector parsing.
     }
+    const emptySlotsHidden = compactHomepageGrid();
+    const page = applyHomepagePageLimit();
     const grid = inspectHomepageGridLayout();
     Api.setLayoutStatus({
       hideHomepageCarousel: enabled,
@@ -289,12 +299,20 @@
       onHomepage: isHomepage,
       carouselFound: count > 0,
       hiddenElements: enabled ? count : 0,
-      emptySlotsHidden: compactHomepageGrid(),
+      emptySlotsHidden,
       gridCount: grid.gridCount,
       gridItems: grid.gridItems,
       visibleGridItems: grid.visibleGridItems,
       firstRowOffsetSpread: grid.firstRowOffsetSpread,
       maxItemMarginTop: grid.maxItemMarginTop,
+      pagedMode: page.enabled,
+      pageSize: HOMEPAGE_PAGE_SIZE,
+      pageVisible: page.visible,
+      pageOverflowHidden: page.overflowHidden,
+      pagePendingHidden: page.pendingHidden,
+      pageReady: page.ready,
+      loadAnchorsSuppressed: page.loadAnchorsSuppressed,
+      nativeRefreshButtons: page.nativeRefreshButtons,
     });
   }
 
@@ -467,6 +485,64 @@
       }
     }
     return hidden;
+  }
+
+  function isHomepageVideoItem(item) {
+    if (!(item instanceof Element)) return false;
+    if (item.matches('.recommended-swipe,.load-more-anchor,script,style')) return false;
+    return Boolean(item.querySelector('a[href*="/video/"]'));
+  }
+
+  function clearHomepagePageMarkers() {
+    for (const item of document.querySelectorAll('[data-pbp-page-overflow],[data-pbp-page-pending]')) {
+      item.removeAttribute('data-pbp-page-overflow');
+      item.removeAttribute('data-pbp-page-pending');
+    }
+  }
+
+  function applyHomepagePageLimit() {
+    const extension = Api.getConfig().browserExtension;
+    const enabled = isHomepageLocation() && extension.enabled !== false && extension.homepagePagedMode !== false;
+    document.documentElement.toggleAttribute('data-pbp-home-paged', enabled);
+    if (enabled) document.documentElement.setAttribute('data-pbp-home-paged', '1');
+    clearHomepagePageMarkers();
+    let visible = 0;
+    let overflowHidden = 0;
+    let pendingHidden = 0;
+    if (enabled) {
+      for (const grid of homepageGrids()) {
+        for (const item of grid.children) {
+          if (!(item instanceof Element) || item.matches('.recommended-swipe,.load-more-anchor,script,style')) continue;
+          if (item.dataset.pbpAdHidden === '1' || item.dataset.pbpBlockedUploader === '1' || item.dataset.pbpEmptyFeedSlot === '1') continue;
+          if (isHomepageVideoItem(item)) {
+            if (visible < HOMEPAGE_PAGE_SIZE) visible += 1;
+            else {
+              item.dataset.pbpPageOverflow = '1';
+              overflowHidden += 1;
+            }
+          } else if (item.matches('.feed-card,.bili-feed-card')) {
+            item.dataset.pbpPagePending = '1';
+            pendingHidden += 1;
+          }
+        }
+      }
+    }
+    const ready = enabled && visible >= HOMEPAGE_PAGE_SIZE;
+    document.documentElement.toggleAttribute('data-pbp-home-paged-ready', ready);
+    if (ready) document.documentElement.setAttribute('data-pbp-home-paged-ready', '1');
+    const loadAnchors = enabled ? document.querySelectorAll('[data-pbp-home-grid="1"] .load-more-anchor').length : 0;
+    const nativeRefreshButtons = enabled
+      ? document.querySelectorAll('.feed-roll-btn,button.roll-btn,.flexible-roll-btn,.flexible-roll-btn-inner').length
+      : 0;
+    return {
+      enabled,
+      visible,
+      overflowHidden,
+      pendingHidden,
+      ready,
+      loadAnchorsSuppressed: ready ? loadAnchors : 0,
+      nativeRefreshButtons,
+    };
   }
 
   function inspectHomepageGridLayout() {

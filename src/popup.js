@@ -49,11 +49,14 @@
     const layout = status.layout || {};
     const compacted = Number(layout.emptySlotsHidden) || 0;
     const compactedText = compacted ? ` · 已回收 ${compacted} 个空槽` : '';
+    const pageText = layout.pagedMode
+      ? ` · 固定页 ${layout.pageVisible || 0}/${layout.pageSize || 24}${layout.pageReady ? ' 已就绪' : ' 补充中'}`
+      : '';
     elements.layoutSummary.textContent = !layout.preferenceEnabled
       ? '首页推广轮播：保留显示'
       : (!layout.onHomepage
         ? '首页推广轮播：隐藏规则已开启（当前非首页）'
-        : (layout.carouselFound ? `首页推广轮播：已隐藏 ${layout.hiddenElements || 1} 个组件${compactedText}` : `首页推广轮播：规则已开启，当前页未发现组件${compactedText}`));
+        : (layout.carouselFound ? `首页推广轮播：已隐藏 ${layout.hiddenElements || 1} 个组件${compactedText}${pageText}` : `首页推广轮播：规则已开启，当前页未发现组件${compactedText}${pageText}`));
     elements.hits.replaceChildren();
     const hits = status.hits || [];
     if (!hits.length) {
