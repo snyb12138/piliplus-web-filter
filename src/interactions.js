@@ -384,6 +384,7 @@
       inactiveGridsIgnored: page.inactiveGridsIgnored,
       customBatchActive: page.customBatchActive,
       customBatchRendered: page.customBatchRendered,
+      nativeSlotsSuppressed: page.nativeSlotsSuppressed,
       refreshError: page.refreshError,
     });
   }
@@ -728,18 +729,27 @@
     for (const card of document.querySelectorAll('.pbp-home-custom-card')) card.remove();
   }
 
+  function suppressHomepageNativeGridItems(grid) {
+    if (!(grid instanceof Element)) return 0;
+    let suppressed = 0;
+    for (const item of grid.children) {
+      if (!(item instanceof Element) || item.matches('.recommended-swipe,.load-more-anchor,[data-pbp-home-stats],.pbp-home-custom-card,script,style')) continue;
+      // Preserve the fixed refresh control if Bilibili ever moves it inside the
+      // recommendation grid. Floating refresh controls are hidden separately.
+      if (item.matches('.feed-roll-btn,button.roll-btn') || item.querySelector('.feed-roll-btn,button.roll-btn')) continue;
+      item.dataset.pbpNativeHidden = '1';
+      suppressed += 1;
+    }
+    return suppressed;
+  }
+
   function renderHomepageBatch(items) {
     const grid = activeHomepageGrid();
     if (!grid) throw new Error('没有找到首页推荐网格');
     const cards = items.slice(0, HOMEPAGE_VIDEO_SLOTS).map(createHomepageVideoCard).filter(Boolean);
     if (!cards.length) throw new Error('换批结果中没有可渲染的视频');
     for (const old of grid.querySelectorAll(':scope > .pbp-home-custom-card')) old.remove();
-    for (const item of grid.children) {
-      if (!(item instanceof Element) || item.matches('.recommended-swipe,.load-more-anchor,[data-pbp-home-stats],.pbp-home-custom-card,script,style')) continue;
-      if (isHomepageVideoItem(item) || item.matches('.feed-card,.bili-feed-card,.floor-single-card')) {
-        item.dataset.pbpNativeHidden = '1';
-      }
-    }
+    suppressHomepageNativeGridItems(grid);
     const panel = grid.querySelector(':scope > [data-pbp-home-stats="1"]');
     const fragment = document.createDocumentFragment();
     cards.forEach((card) => fragment.append(card));
@@ -806,6 +816,8 @@
     const activeGrid = enabled ? activeHomepageGrid(grids) : null;
     const statsPanelMounted = ensureHomepageStatsPanel(enabled, activeGrid);
     const refreshSettling = enabled && homepageRefreshReloading;
+    const customBatchActive = Boolean(enabled && activeGrid?.querySelector(':scope > .pbp-home-custom-card'));
+    const nativeSlotsSuppressed = customBatchActive ? suppressHomepageNativeGridItems(activeGrid) : 0;
     let visible = 0;
     let overflowHidden = 0;
     let pendingHidden = 0;
@@ -849,6 +861,7 @@
       inactiveGridsIgnored: Math.max(0, grids.length - (activeGrid ? 1 : 0)),
       customBatchActive: customBatchRendered > 0,
       customBatchRendered,
+      nativeSlotsSuppressed,
       refreshError: homepageRefreshError,
     };
   }

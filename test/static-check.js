@@ -79,6 +79,9 @@ if (!interactionSource.includes('data-pbp-home-stats') || !interactionSource.inc
 if (!interactionSource.includes('activeHomepageGrid') || !interactionSource.includes('requestHomepageBatch') || !interactionSource.includes('pbp-home-custom-card') || !interactionSource.includes('.flexible-roll-btn-inner')) {
   throw new Error('homepage managed refresh is missing');
 }
+if (!interactionSource.includes('suppressHomepageNativeGridItems') || !interactionSource.includes('nativeSlotsSuppressed')) {
+  throw new Error('homepage managed refresh skeleton suppression is missing');
+}
 if (!pageMainSource.includes('homepage-batch-result') || !pageMainSource.includes('homepageBatchRequests')) {
   throw new Error('homepage managed refresh bridge is missing');
 }

@@ -85,6 +85,7 @@
       inactiveGridsIgnored: 0,
       customBatchActive: false,
       customBatchRendered: 0,
+      nativeSlotsSuppressed: 0,
       refreshError: null,
       lastAppliedAt: null,
     },
@@ -384,6 +385,7 @@
         inactiveGridsIgnored: Number(next.inactiveGridsIgnored) || 0,
         customBatchActive: next.customBatchActive === true,
         customBatchRendered: Number(next.customBatchRendered) || 0,
+        nativeSlotsSuppressed: Number(next.nativeSlotsSuppressed) || 0,
         refreshError: typeof next.refreshError === 'string' && next.refreshError ? next.refreshError : null,
         lastAppliedAt: new Date().toISOString(),
       };
