@@ -70,8 +70,11 @@ if (!interactionSource.includes('data-pbp-home-grid') || !interactionSource.incl
 if (!interactionSource.includes('inspectHomepageGridLayout') || !fs.readFileSync(path.join(root, 'src/content.js'), 'utf8').includes('firstRowOffsetSpread')) {
   throw new Error('homepage grid diagnostics are missing');
 }
-if (!interactionSource.includes('HOMEPAGE_PAGE_SIZE = 24') || !interactionSource.includes('data-pbp-home-paged-ready') || !interactionSource.includes('applyHomepagePageLimit')) {
+if (!interactionSource.includes('HOMEPAGE_GRID_SLOTS = 24') || !interactionSource.includes('HOMEPAGE_VIDEO_SLOTS = 22') || !interactionSource.includes('data-pbp-home-paged-ready') || !interactionSource.includes('applyHomepagePageLimit')) {
   throw new Error('homepage 6x4 paged mode is missing');
+}
+if (!interactionSource.includes('data-pbp-home-stats') || !interactionSource.includes('FEEDBACK_URL') || !interactionSource.includes('getStatusSnapshot')) {
+  throw new Error('homepage purification statistics panel is missing');
 }
 if (!fs.existsSync(path.join(root, 'config/ad-keywords.json'))) throw new Error('bundled advertising keywords are missing');
 if (!manifest.permissions?.includes('alarms')) throw new Error('advertising rule synchronization requires alarms');

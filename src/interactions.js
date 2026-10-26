@@ -108,7 +108,9 @@
   const adRecords = new Set();
   const ROUTE_SETTLE_MS = 1500;
   const INCREMENTAL_SCAN_DELAY_MS = 80;
-  const HOMEPAGE_PAGE_SIZE = 24;
+  const HOMEPAGE_GRID_SLOTS = 24;
+  const HOMEPAGE_VIDEO_SLOTS = 22;
+  const FEEDBACK_URL = 'https://github.com/snyb12138/piliplus-web-filter/issues';
   let scanScheduled = false;
   let scanTimer = null;
   let activeRoute = `${location.origin}${location.pathname}${location.search}`;
@@ -270,6 +272,43 @@
       html[data-pbp-home-paged-ready="1"] [data-pbp-home-grid="1"] .load-more-anchor{
         display:none!important;
       }
+      html[data-pbp-home-paged="1"] [data-pbp-home-grid="1"] > [data-pbp-home-stats="1"]{
+        display:flex!important;
+        grid-column:span 2!important;
+        grid-row:auto!important;
+        align-self:stretch!important;
+        min-width:0!important;
+        min-height:172px;
+        padding:18px 20px!important;
+        border:1px solid rgba(0,0,0,.08);
+        border-radius:12px;
+        background:rgba(255,255,255,.96);
+        color:#18191c;
+        box-shadow:0 2px 10px rgba(0,0,0,.04);
+        flex-direction:column;
+        justify-content:space-between;
+        gap:14px;
+        box-sizing:border-box;
+      }
+      [data-pbp-home-stats="1"] .pbp-stats-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+      [data-pbp-home-stats="1"] .pbp-stats-title{font-size:16px;font-weight:700}
+      [data-pbp-home-stats="1"] .pbp-stats-state{font-size:12px;color:#00aeec}
+      [data-pbp-home-stats="1"] .pbp-stats-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+      [data-pbp-home-stats="1"] .pbp-stat{min-width:0;padding:10px;border-radius:9px;background:rgba(0,174,236,.07)}
+      [data-pbp-home-stats="1"] .pbp-stat-value{display:block;font-size:20px;font-weight:750;line-height:1.2;color:#00aeec}
+      [data-pbp-home-stats="1"] .pbp-stat-label{display:block;margin-top:3px;font-size:12px;white-space:nowrap;color:#61666d}
+      [data-pbp-home-stats="1"] .pbp-stats-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px;color:#9499a0}
+      [data-pbp-home-stats="1"] .pbp-stats-links{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+      [data-pbp-home-stats="1"] .pbp-stats-link{border:0;background:transparent;color:#00aeec;padding:0;cursor:pointer;text-decoration:none;font:inherit}
+      [data-pbp-home-stats="1"] .pbp-stats-link:hover{text-decoration:underline}
+      html[class*="dark"] [data-pbp-home-stats="1"]{border-color:rgba(255,255,255,.08);background:rgba(31,33,36,.96);color:#f1f2f3;box-shadow:none}
+      html[class*="dark"] [data-pbp-home-stats="1"] .pbp-stat{background:rgba(0,174,236,.12)}
+      html[class*="dark"] [data-pbp-home-stats="1"] .pbp-stat-label{color:#a2a7ae}
+      @media(prefers-color-scheme:dark){
+        [data-pbp-home-stats="1"]{border-color:rgba(255,255,255,.08)!important;background:rgba(31,33,36,.96)!important;color:#f1f2f3!important;box-shadow:none!important}
+        [data-pbp-home-stats="1"] .pbp-stat{background:rgba(0,174,236,.12)!important}
+        [data-pbp-home-stats="1"] .pbp-stat-label{color:#a2a7ae!important}
+      }
     `;
     (document.head || document.documentElement).append(style);
   }
@@ -306,13 +345,15 @@
       firstRowOffsetSpread: grid.firstRowOffsetSpread,
       maxItemMarginTop: grid.maxItemMarginTop,
       pagedMode: page.enabled,
-      pageSize: HOMEPAGE_PAGE_SIZE,
+      pageSize: HOMEPAGE_VIDEO_SLOTS,
+      gridSlots: HOMEPAGE_GRID_SLOTS,
       pageVisible: page.visible,
       pageOverflowHidden: page.overflowHidden,
       pagePendingHidden: page.pendingHidden,
       pageReady: page.ready,
       loadAnchorsSuppressed: page.loadAnchorsSuppressed,
       nativeRefreshButtons: page.nativeRefreshButtons,
+      statsPanelMounted: page.statsPanelMounted,
     });
   }
 
@@ -493,6 +534,80 @@
     return Boolean(item.querySelector('a[href*="/video/"]'));
   }
 
+  function homepageRuleCount() {
+    const config = Api.getConfig();
+    return (config.mutedUsers?.length || 0) +
+      (config.uploaderRules?.users?.length || 0) +
+      (config.danmakuRules?.uidHashes?.length || 0) +
+      (config.danmakuRules?.keywords?.length || 0) +
+      (config.danmakuRules?.regex?.length || 0) +
+      (config.danmakuAssistant?.absoluteRules?.length || 0) +
+      (config.danmakuAssistant?.gentleRules?.length || 0);
+  }
+
+  function updateHomepageStatsPanel(panel) {
+    const snapshot = Api.getStatusSnapshot();
+    const interaction = snapshot.interaction || {};
+    const ads = Number(interaction.adsDomHidden || 0) + Number(interaction.adsApiDropped || 0);
+    const uploaders = Number(interaction.uploaderCardsHidden || 0) + Number(interaction.uploaderApiDropped || 0);
+    const danmaku = Number(snapshot.blocked || 0);
+    const total = ads + uploaders + danmaku;
+    const values = { total, ads, uploaders, rules: homepageRuleCount() };
+    for (const [key, value] of Object.entries(values)) {
+      const target = panel.querySelector(`[data-pbp-stat="${key}"]`);
+      if (target) target.textContent = String(value);
+    }
+    const state = panel.querySelector('[data-pbp-stats-state]');
+    if (state) state.textContent = snapshot.connected && snapshot.rulesReady ? '过滤已就绪' : '规则连接中';
+  }
+
+  function ensureHomepageStatsPanel(enabled) {
+    const existing = document.querySelector('[data-pbp-home-stats="1"]');
+    if (!enabled) {
+      existing?.remove();
+      return false;
+    }
+    const grid = homepageGrids()[0];
+    if (!grid) return false;
+    let panel = existing;
+    if (!panel || panel.parentElement !== grid) {
+      panel?.remove();
+      panel = createElement('section', 'pbp-home-stats');
+      panel.dataset.pbpHomeStats = '1';
+      panel.setAttribute('aria-label', 'PiliPlus 净化统计');
+      const head = createElement('div', 'pbp-stats-head');
+      head.append(createElement('span', 'pbp-stats-title', '净化统计'));
+      const state = createElement('span', 'pbp-stats-state', '规则连接中');
+      state.dataset.pbpStatsState = '1';
+      head.append(state);
+      const metrics = createElement('div', 'pbp-stats-grid');
+      for (const [key, label] of [['total', '本次已屏蔽'], ['ads', '广告与推广'], ['uploaders', 'UP 投稿'], ['rules', '规则库']]) {
+        const metric = createElement('div', 'pbp-stat');
+        const value = createElement('span', 'pbp-stat-value', '0');
+        value.dataset.pbpStat = key;
+        metric.append(value, createElement('span', 'pbp-stat-label', label));
+        metrics.append(metric);
+      }
+      const foot = createElement('div', 'pbp-stats-foot');
+      foot.append(createElement('span', '', 'PiliPlus Web Filter'));
+      const links = createElement('div', 'pbp-stats-links');
+      const options = createElement('button', 'pbp-stats-link', '管理规则');
+      options.type = 'button';
+      options.addEventListener('click', () => chrome.runtime.openOptionsPage());
+      const feedback = createElement('a', 'pbp-stats-link', '问题反馈 · GitHub Issues');
+      feedback.href = FEEDBACK_URL;
+      feedback.target = '_blank';
+      feedback.rel = 'noopener noreferrer';
+      feedback.title = FEEDBACK_URL;
+      links.append(options, feedback);
+      foot.append(links);
+      panel.append(head, metrics, foot);
+      grid.append(panel);
+    }
+    updateHomepageStatsPanel(panel);
+    return true;
+  }
+
   function clearHomepagePageMarkers() {
     for (const item of document.querySelectorAll('[data-pbp-page-overflow],[data-pbp-page-pending]')) {
       item.removeAttribute('data-pbp-page-overflow');
@@ -505,6 +620,7 @@
     const enabled = isHomepageLocation() && extension.enabled !== false && extension.homepagePagedMode !== false;
     document.documentElement.toggleAttribute('data-pbp-home-paged', enabled);
     if (enabled) document.documentElement.setAttribute('data-pbp-home-paged', '1');
+    const statsPanelMounted = ensureHomepageStatsPanel(enabled);
     clearHomepagePageMarkers();
     let visible = 0;
     let overflowHidden = 0;
@@ -512,10 +628,10 @@
     if (enabled) {
       for (const grid of homepageGrids()) {
         for (const item of grid.children) {
-          if (!(item instanceof Element) || item.matches('.recommended-swipe,.load-more-anchor,script,style')) continue;
+          if (!(item instanceof Element) || item.matches('.recommended-swipe,.load-more-anchor,[data-pbp-home-stats],script,style')) continue;
           if (item.dataset.pbpAdHidden === '1' || item.dataset.pbpBlockedUploader === '1' || item.dataset.pbpEmptyFeedSlot === '1') continue;
           if (isHomepageVideoItem(item)) {
-            if (visible < HOMEPAGE_PAGE_SIZE) visible += 1;
+            if (visible < HOMEPAGE_VIDEO_SLOTS) visible += 1;
             else {
               item.dataset.pbpPageOverflow = '1';
               overflowHidden += 1;
@@ -527,7 +643,7 @@
         }
       }
     }
-    const ready = enabled && visible >= HOMEPAGE_PAGE_SIZE;
+    const ready = enabled && visible >= HOMEPAGE_VIDEO_SLOTS && statsPanelMounted;
     document.documentElement.toggleAttribute('data-pbp-home-paged-ready', ready);
     if (ready) document.documentElement.setAttribute('data-pbp-home-paged-ready', '1');
     const loadAnchors = enabled ? document.querySelectorAll('[data-pbp-home-grid="1"] .load-more-anchor').length : 0;
@@ -542,6 +658,7 @@
       ready,
       loadAnchorsSuppressed: ready ? loadAnchors : 0,
       nativeRefreshButtons,
+      statsPanelMounted,
     };
   }
 
