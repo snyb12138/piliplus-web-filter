@@ -64,6 +64,11 @@
       carouselFound: false,
       hiddenElements: 0,
       emptySlotsHidden: 0,
+      gridCount: 0,
+      gridItems: 0,
+      visibleGridItems: 0,
+      firstRowOffsetSpread: 0,
+      maxItemMarginTop: 0,
       lastAppliedAt: null,
     },
     interaction: {
@@ -312,6 +317,11 @@
         carouselFound: next.carouselFound === true,
         hiddenElements: Number(next.hiddenElements) || 0,
         emptySlotsHidden: Number(next.emptySlotsHidden) || 0,
+        gridCount: Number(next.gridCount) || 0,
+        gridItems: Number(next.gridItems) || 0,
+        visibleGridItems: Number(next.visibleGridItems) || 0,
+        firstRowOffsetSpread: Number(next.firstRowOffsetSpread) || 0,
+        maxItemMarginTop: Number(next.maxItemMarginTop) || 0,
         lastAppliedAt: new Date().toISOString(),
       };
     },

@@ -246,6 +246,8 @@
         grid-column:auto!important;
         grid-row:auto!important;
         order:0!important;
+        margin-top:0!important;
+        align-self:start!important;
       }
       html[data-pbp-hide-home-carousel="1"] .recommended-container_floor-aside .container.is-version8 > :is(.feed-card,.bili-feed-card),
       html[data-pbp-hide-home-carousel="1"] .recommended-container_floor-aside .container:has(> .recommended-swipe) > :is(.feed-card,.bili-feed-card),
@@ -279,6 +281,7 @@
     } catch (_) {
       // Keep layout filtering fail-open if Bilibili changes selector parsing.
     }
+    const grid = inspectHomepageGridLayout();
     Api.setLayoutStatus({
       hideHomepageCarousel: enabled,
       preferenceEnabled: extension.hideHomepageCarousel !== false,
@@ -286,6 +289,11 @@
       carouselFound: count > 0,
       hiddenElements: enabled ? count : 0,
       emptySlotsHidden: compactHomepageGrid(),
+      gridCount: grid.gridCount,
+      gridItems: grid.gridItems,
+      visibleGridItems: grid.visibleGridItems,
+      firstRowOffsetSpread: grid.firstRowOffsetSpread,
+      maxItemMarginTop: grid.maxItemMarginTop,
     });
   }
 
@@ -457,6 +465,39 @@
       }
     }
     return hidden;
+  }
+
+  function inspectHomepageGridLayout() {
+    const grids = homepageGrids();
+    let gridItems = 0;
+    let visibleGridItems = 0;
+    let firstRowOffsetSpread = 0;
+    let maxItemMarginTop = 0;
+    for (const grid of grids) {
+      const visible = [];
+      for (const item of [...grid.children].slice(0, 48)) {
+        if (!(item instanceof Element) || item.matches('.recommended-swipe')) continue;
+        gridItems += 1;
+        const style = getComputedStyle(item);
+        maxItemMarginTop = Math.max(maxItemMarginTop, Number.parseFloat(style.marginTop) || 0);
+        const rect = item.getBoundingClientRect();
+        if (style.display === 'none' || style.visibility === 'hidden' || rect.width <= 0 || rect.height <= 0) continue;
+        visibleGridItems += 1;
+        visible.push(rect);
+      }
+      const columns = new Set(visible.map((rect) => Math.round(rect.x))).size;
+      if (columns > 1 && visible.length >= columns) {
+        const firstRow = visible.slice(0, columns).map((rect) => rect.y);
+        firstRowOffsetSpread = Math.max(firstRowOffsetSpread, Math.round(Math.max(...firstRow) - Math.min(...firstRow)));
+      }
+    }
+    return {
+      gridCount: grids.length,
+      gridItems,
+      visibleGridItems,
+      firstRowOffsetSpread,
+      maxItemMarginTop: Math.round(maxItemMarginTop),
+    };
   }
 
   function findDanmakuElement(event) {
