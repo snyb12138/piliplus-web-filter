@@ -108,6 +108,7 @@
   const adRecords = new Set();
   const ROUTE_SETTLE_MS = 1500;
   const INCREMENTAL_SCAN_DELAY_MS = 80;
+  const HOMEPAGE_REFRESH_SETTLE_MS = 1200;
   const HOMEPAGE_GRID_SLOTS = 24;
   const HOMEPAGE_VIDEO_SLOTS = 22;
   const FEEDBACK_URL = 'https://github.com/snyb12138/piliplus-web-filter/issues';
@@ -116,6 +117,8 @@
   let activeRoute = `${location.origin}${location.pathname}${location.search}`;
   let routeHoldUntil = 0;
   let danmakuMenuBusy = false;
+  let homepageRefreshHoldUntil = 0;
+  let homepageRefreshTimer = null;
   let uiHost;
   let uiRoot;
   let toastTimer;
@@ -272,6 +275,9 @@
       html[data-pbp-home-paged-ready="1"] [data-pbp-home-grid="1"] .load-more-anchor{
         display:none!important;
       }
+      html[data-pbp-home-paged="1"] :is(.flexible-roll-btn,.flexible-roll-btn-inner){
+        display:none!important;
+      }
       html[data-pbp-home-paged="1"] [data-pbp-home-grid="1"] > [data-pbp-home-stats="1"]{
         display:flex!important;
         grid-column:span 2!important;
@@ -354,6 +360,8 @@
       loadAnchorsSuppressed: page.loadAnchorsSuppressed,
       nativeRefreshButtons: page.nativeRefreshButtons,
       statsPanelMounted: page.statsPanelMounted,
+      refreshSettling: page.refreshSettling,
+      inactiveGridsIgnored: page.inactiveGridsIgnored,
     });
   }
 
@@ -484,6 +492,36 @@
     });
   }
 
+  function isNativelyVisible(element) {
+    if (!(element instanceof Element) || element.hidden || element.getAttribute('aria-hidden') === 'true') return false;
+    const style = getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden' || Number.parseFloat(style.opacity || '1') <= 0.01) return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 2 && rect.height > 2;
+  }
+
+  function activeHomepageGrid(grids = homepageGrids()) {
+    let best = null;
+    let bestScore = -1;
+    for (let index = 0; index < grids.length; index += 1) {
+      const grid = grids[index];
+      if (!isNativelyVisible(grid)) continue;
+      let visibleVideos = 0;
+      for (const item of grid.children) {
+        if (item.matches?.('[data-pbp-home-stats],.recommended-swipe,.load-more-anchor')) continue;
+        if (isNativelyVisible(item) && isHomepageVideoItem(item)) visibleVideos += 1;
+      }
+      // Prefer the grid with the most actually rendered videos. A later grid
+      // wins ties because Bilibili appends the replacement grid after the old one.
+      const score = visibleVideos * 1000 + index;
+      if (score >= bestScore) {
+        best = grid;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
   function findHomepageGridItem(container) {
     if (!(container instanceof Element)) return container;
     const grid = findHomepageGrid(container);
@@ -561,17 +599,17 @@
     if (state) state.textContent = snapshot.connected && snapshot.rulesReady ? '过滤已就绪' : '规则连接中';
   }
 
-  function ensureHomepageStatsPanel(enabled) {
-    const existing = document.querySelector('[data-pbp-home-stats="1"]');
+  function ensureHomepageStatsPanel(enabled, grid) {
+    const panels = [...document.querySelectorAll('[data-pbp-home-stats="1"]')];
+    const existing = panels.find((panel) => panel.parentElement === grid) || panels[0];
     if (!enabled) {
-      existing?.remove();
+      panels.forEach((panel) => panel.remove());
       return false;
     }
-    const grid = homepageGrids()[0];
     if (!grid) return false;
     let panel = existing;
     if (!panel || panel.parentElement !== grid) {
-      panel?.remove();
+      panels.forEach((candidate) => candidate.remove());
       panel = createElement('section', 'pbp-home-stats');
       panel.dataset.pbpHomeStats = '1';
       panel.setAttribute('aria-label', 'PiliPlus 净化统计');
@@ -620,30 +658,31 @@
     const enabled = isHomepageLocation() && extension.enabled !== false && extension.homepagePagedMode !== false;
     document.documentElement.toggleAttribute('data-pbp-home-paged', enabled);
     if (enabled) document.documentElement.setAttribute('data-pbp-home-paged', '1');
-    const statsPanelMounted = ensureHomepageStatsPanel(enabled);
     clearHomepagePageMarkers();
+    const grids = homepageGrids();
+    const activeGrid = enabled ? activeHomepageGrid(grids) : null;
+    const statsPanelMounted = ensureHomepageStatsPanel(enabled, activeGrid);
+    const refreshSettling = enabled && Date.now() < homepageRefreshHoldUntil;
     let visible = 0;
     let overflowHidden = 0;
     let pendingHidden = 0;
-    if (enabled) {
-      for (const grid of homepageGrids()) {
-        for (const item of grid.children) {
-          if (!(item instanceof Element) || item.matches('.recommended-swipe,.load-more-anchor,[data-pbp-home-stats],script,style')) continue;
-          if (item.dataset.pbpAdHidden === '1' || item.dataset.pbpBlockedUploader === '1' || item.dataset.pbpEmptyFeedSlot === '1') continue;
-          if (isHomepageVideoItem(item)) {
-            if (visible < HOMEPAGE_VIDEO_SLOTS) visible += 1;
-            else {
-              item.dataset.pbpPageOverflow = '1';
-              overflowHidden += 1;
-            }
-          } else if (item.matches('.feed-card,.bili-feed-card')) {
-            item.dataset.pbpPagePending = '1';
-            pendingHidden += 1;
+    if (enabled && activeGrid) {
+      for (const item of activeGrid.children) {
+        if (!(item instanceof Element) || item.matches('.recommended-swipe,.load-more-anchor,[data-pbp-home-stats],script,style')) continue;
+        if (item.dataset.pbpAdHidden === '1' || item.dataset.pbpBlockedUploader === '1' || item.dataset.pbpEmptyFeedSlot === '1') continue;
+        if (isHomepageVideoItem(item) && isNativelyVisible(item)) {
+          if (visible < HOMEPAGE_VIDEO_SLOTS) visible += 1;
+          else if (!refreshSettling) {
+            item.dataset.pbpPageOverflow = '1';
+            overflowHidden += 1;
           }
+        } else if (!refreshSettling && item.matches('.feed-card,.bili-feed-card') && isNativelyVisible(item)) {
+          item.dataset.pbpPagePending = '1';
+          pendingHidden += 1;
         }
       }
     }
-    const ready = enabled && visible >= HOMEPAGE_VIDEO_SLOTS && statsPanelMounted;
+    const ready = enabled && !refreshSettling && visible >= HOMEPAGE_VIDEO_SLOTS && statsPanelMounted;
     document.documentElement.toggleAttribute('data-pbp-home-paged-ready', ready);
     if (ready) document.documentElement.setAttribute('data-pbp-home-paged-ready', '1');
     const loadAnchors = enabled ? document.querySelectorAll('[data-pbp-home-grid="1"] .load-more-anchor').length : 0;
@@ -659,7 +698,25 @@
       loadAnchorsSuppressed: ready ? loadAnchors : 0,
       nativeRefreshButtons,
       statsPanelMounted,
+      refreshSettling,
+      inactiveGridsIgnored: Math.max(0, grids.length - (activeGrid ? 1 : 0)),
     };
+  }
+
+  function beginHomepageRefreshSettle(event) {
+    if (!isHomepageLocation() || Api.getConfig().browserExtension.homepagePagedMode === false) return;
+    const target = event.target instanceof Element ? event.target : null;
+    const button = target?.closest('.feed-roll-btn');
+    if (!button || target.closest('.flexible-roll-btn,.flexible-roll-btn-inner')) return;
+    homepageRefreshHoldUntil = Date.now() + HOMEPAGE_REFRESH_SETTLE_MS;
+    document.documentElement.setAttribute('data-pbp-home-refreshing', '1');
+    clearHomepagePageMarkers();
+    clearTimeout(homepageRefreshTimer);
+    homepageRefreshTimer = setTimeout(() => {
+      homepageRefreshHoldUntil = 0;
+      document.documentElement.removeAttribute('data-pbp-home-refreshing');
+      scheduleContentScan(document);
+    }, HOMEPAGE_REFRESH_SETTLE_MS + 30);
   }
 
   function inspectHomepageGridLayout() {
@@ -1163,6 +1220,7 @@
     document.addEventListener('click', (event) => {
       handleDanmakuClick(event).catch((error) => showToast(`弹幕净化操作失败：${error.message}`));
     }, true);
+    document.addEventListener('click', beginHomepageRefreshSettle, true);
     observeRoot(document);
     setInterval(() => {
       discoverShadowRoots(document);

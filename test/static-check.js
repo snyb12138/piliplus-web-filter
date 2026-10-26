@@ -76,6 +76,9 @@ if (!interactionSource.includes('HOMEPAGE_GRID_SLOTS = 24') || !interactionSourc
 if (!interactionSource.includes('data-pbp-home-stats') || !interactionSource.includes('FEEDBACK_URL') || !interactionSource.includes('getStatusSnapshot')) {
   throw new Error('homepage purification statistics panel is missing');
 }
+if (!interactionSource.includes('activeHomepageGrid') || !interactionSource.includes('HOMEPAGE_REFRESH_SETTLE_MS') || !interactionSource.includes('.flexible-roll-btn-inner')) {
+  throw new Error('homepage native refresh stabilization is missing');
+}
 if (!fs.existsSync(path.join(root, 'config/ad-keywords.json'))) throw new Error('bundled advertising keywords are missing');
 if (!manifest.permissions?.includes('alarms')) throw new Error('advertising rule synchronization requires alarms');
 if (!fs.readFileSync(path.join(root, 'options.html'), 'utf8').includes('id="hideHomepageCarousel"')) {

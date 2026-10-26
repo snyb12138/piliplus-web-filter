@@ -79,6 +79,8 @@
       loadAnchorsSuppressed: 0,
       nativeRefreshButtons: 0,
       statsPanelMounted: false,
+      refreshSettling: false,
+      inactiveGridsIgnored: 0,
       lastAppliedAt: null,
     },
     interaction: {
@@ -349,6 +351,8 @@
         loadAnchorsSuppressed: Number(next.loadAnchorsSuppressed) || 0,
         nativeRefreshButtons: Number(next.nativeRefreshButtons) || 0,
         statsPanelMounted: next.statsPanelMounted === true,
+        refreshSettling: next.refreshSettling === true,
+        inactiveGridsIgnored: Number(next.inactiveGridsIgnored) || 0,
         lastAppliedAt: new Date().toISOString(),
       };
     },

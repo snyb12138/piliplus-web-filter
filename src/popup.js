@@ -50,7 +50,7 @@
     const compacted = Number(layout.emptySlotsHidden) || 0;
     const compactedText = compacted ? ` · 已回收 ${compacted} 个空槽` : '';
     const pageText = layout.pagedMode
-      ? ` · 固定页 ${layout.pageVisible || 0}/${layout.pageSize || 22}${layout.statsPanelMounted ? ' + 统计卡' : ''}${layout.pageReady ? ' 已就绪' : ' 补充中'}`
+      ? ` · 固定页 ${layout.pageVisible || 0}/${layout.pageSize || 22}${layout.statsPanelMounted ? ' + 统计卡' : ''}${layout.refreshSettling ? ' 换批稳定中' : (layout.pageReady ? ' 已就绪' : ' 补充中')}`
       : '';
     elements.layoutSummary.textContent = !layout.preferenceEnabled
       ? '首页推广轮播：保留显示'
