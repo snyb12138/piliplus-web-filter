@@ -43,7 +43,7 @@
       </div>
       <p class="hint">隐藏 <code>.recommended-swipe</code> 并让视频卡片自动回填空位；关闭后刷新首页即可恢复原布局。</p>
       <p class="hint">固定推荐页会先补足 24 个有效视频，再显示前22个和统计卡；右侧“换一换”由插件托管获取、净化并渲染下一批。</p>
-      <p class="hint">评论净化和相关推荐“屏蔽UP”现已默认安全恢复；此开关只控制风险较高的视频页广告 DOM 兜底，默认关闭以保护 B 站 SPA 页头。弹幕数据过滤不受影响。</p>
+      <p class="hint">主评论和楼中楼净化已默认恢复。视频页相关推荐不批量注入“屏蔽UP”，以保护 B 站 SPA 页头；已有 UP 黑名单仍会在数据层过滤相关推荐。此开关只控制风险较高的视频页广告 DOM 兜底。</p>
     </section>
 
     <section class="card">
@@ -99,7 +99,7 @@
 
     <section class="card">
       <h2>关于</h2>
-      <p class="muted">PiliPlus 屏蔽联动 v0.8.1 · GNU GPL v3。完整源代码、许可证与第三方声明均随安装包提供。</p>
+      <p class="muted">PiliPlus 屏蔽联动 v0.8.2 · GNU GPL v3。完整源代码、许可证与第三方声明均随安装包提供。</p>
     </section>
 
     <div class="sticky-actions row between">

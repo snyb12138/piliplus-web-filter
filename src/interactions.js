@@ -447,11 +447,6 @@
     return !isVideoPageLocation() || Api.getConfig().browserExtension.videoPageDomEnhancements === true;
   }
 
-  function uploaderCardEnhancementAllowed(container) {
-    if (!isVideoPageLocation()) return true;
-    return Boolean(closestAcrossRoots(container, VIDEO_CONTENT_REGION_SELECTOR));
-  }
-
   function scanAdRoot(root) {
     if (!videoAdDomFallbackAllowed()) return;
     const rules = Api.getAdFilter();
@@ -1221,6 +1216,11 @@
   }
 
   function scanUploaderRoot(root) {
+    // Injecting controls into Bilibili's video recommendation Vue tree causes
+    // its SPA header to rehydrate without the navigation bar. Keep uploader
+    // actions on homepage/search/dynamic pages; related-video data filtering
+    // remains active in MAIN world.
+    if (isVideoPageLocation()) return;
     let anchors;
     try {
       anchors = root instanceof Element && root.matches('a[href*="space.bilibili.com/"]') ? [root] : [];
@@ -1235,7 +1235,6 @@
       const nearestContainer = closestAcrossRoots(anchor, UPLOADER_CARD_SELECTOR);
       if (!nearestContainer) continue;
       const container = findHomepageGridItem(nearestContainer);
-      if (!uploaderCardEnhancementAllowed(container)) continue;
       const candidate = { anchor, mid, score: nameScore(anchor) };
       const previous = grouped.get(container);
       if (!previous || candidate.score > previous.score) grouped.set(container, candidate);

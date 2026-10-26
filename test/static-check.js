@@ -61,8 +61,11 @@ if (interactionSource.includes('data-pbp-video-ad-filter="1"] .strip-ad')) {
 if (!interactionSource.includes('ROUTE_SETTLE_MS') || !interactionSource.includes('routeScanDeferrals')) {
   throw new Error('SPA route stabilization is missing');
 }
-if (!interactionSource.includes('videoAdDomFallbackAllowed') || !interactionSource.includes('uploaderCardEnhancementAllowed') || !fs.readFileSync(path.join(root, 'options.html'), 'utf8').includes('id="videoPageDomEnhancements"')) {
+if (!interactionSource.includes('videoAdDomFallbackAllowed') || !fs.readFileSync(path.join(root, 'options.html'), 'utf8').includes('id="videoPageDomEnhancements"')) {
   throw new Error('video page compatibility mode is missing');
+}
+if (!interactionSource.includes('scanUploaderRoot(root)') || !interactionSource.includes('if (isVideoPageLocation()) return;')) {
+  throw new Error('video page uploader injection guard is missing');
 }
 if (!interactionSource.includes('videoInteractionHoldUntil') || !interactionSource.includes('videoPageInteractionDeferrals')) {
   throw new Error('video page safe interaction restoration is missing');

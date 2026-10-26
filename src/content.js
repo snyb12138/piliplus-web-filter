@@ -111,7 +111,7 @@
     compatibility: {
       videoPageDomEnhancements: false,
       videoPageCommentActions: true,
-      videoPageUploaderActions: true,
+      videoPageUploaderActions: false,
       videoPageAdDomFallback: false,
     },
   };
