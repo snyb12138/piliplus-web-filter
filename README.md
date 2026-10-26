@@ -1,4 +1,4 @@
-# PiliPlus Web Filter v0.5.7
+# PiliPlus Web Filter v0.5.8
 
 Chrome/Edge Manifest V3 扩展。插件导入 PiliPlus 屏蔽配置，并统一过滤 Bilibili 广告、弹幕、评论和指定 UP 主内容。
 
@@ -22,7 +22,7 @@ Chrome/Edge Manifest V3 扩展。插件导入 PiliPlus 屏蔽配置，并统一�
 - 可直接合并导入 PiliPlus 的 `blackMids.json` 纯 UID 数组，并可按同一格式导回 PiliPlus。
 - 默认隐藏 Bilibili 首页左侧 `.recommended-swipe` 推广轮播，并让推荐卡片以密集网格自动回填空位。
 - 设置页可随时关闭该布局规则；弹窗会显示轮播组件是否被识别并隐藏。
-- 在首页推荐接口中移除广告标记卡片，在动态接口中移除商品推广及广告关键词命中的内容。
+- 在首页推荐接口中移除广告标记卡片，并隐藏 `.floor-single-card` 番剧、课堂、电影等官方分区推广位；在动态接口中移除商品推广及广告关键词命中的内容。
 - 隐藏视频页侧栏与条幅广告；DOM 兜底通过持续观察处理无限滚动和 SPA 重新渲染。
 - 内置广告词库可每天从本仓库自动更新，也可关闭远程词库并仅使用自定义关键词。
 - 快捷操作提供撤销；同文案弹幕无法唯一定位发送者时不会猜测。
@@ -76,7 +76,7 @@ Chrome/Edge Manifest V3 扩展。插件导入 PiliPlus 屏蔽配置，并统一�
 - 尚未适配直播 WebSocket 弹幕。
 - BAS、互动弹幕、图片弹幕等特殊类型尚未单独验证。
 - DOM 兜底只能按文本过滤，无法获得发送者 `midHash`。
-- v0.5.7 面向 Chrome/Edge 111 及以上版本。
+- v0.5.8 面向 Chrome/Edge 111 及以上版本。
 - 视频播放页默认启用兼容模式：暂停评论/UP 主快捷按钮与 DOM 广告兜底，保留弹幕数据过滤；可在设置页开启实验性 DOM 增强进行测试。
 - UP 主数据层适配覆盖当前常见的推荐、搜索、动态、热门/排行及相关推荐接口；未识别的新页面会退回 DOM 卡片隐藏。
 - 评论快捷按钮兼容传统评论 DOM 和可访问的开放 Shadow DOM；若 Bilibili 使用封闭 Shadow DOM，需针对其外层事件补充适配。

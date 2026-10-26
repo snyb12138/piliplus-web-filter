@@ -72,6 +72,7 @@
   const AD_CARD_SELECTOR = [
     '.feed-card',
     '.bili-feed-card',
+    '.floor-single-card',
     '.bili-dyn-item',
     '.dynamic-card-item',
     '.video-card-ad-small',
@@ -320,6 +321,7 @@
   }
 
   function hasAdMarker(card) {
+    if (card.matches('.floor-single-card')) return true;
     if (card.matches('.video-card-ad-small,.strip-ad,[data-ad="true"],[data-is-ad="1"]')) return true;
     if (card.querySelector('.bili-video-card__info--ad,.bili-video-card__stats--ad,.ad-report,[class*="ad-tag"],[class*="advert"]')) return true;
     const links = [...card.querySelectorAll('a[href]')];

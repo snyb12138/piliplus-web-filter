@@ -45,6 +45,9 @@ if (!interactionSource.includes('[class*="recommended-container_"]') || !interac
 if (!interactionSource.includes('observeListContainer') || !interactionSource.includes('adsDomHidden')) {
   throw new Error('continuous advertising DOM fallback is missing');
 }
+if (!interactionSource.includes("card.matches('.floor-single-card')")) {
+  throw new Error('homepage official promotion card filter is missing');
+}
 if (!interactionSource.includes("document.readyState === 'loading'") || !interactionSource.includes('PAGE_CHROME_SELECTOR')) {
   throw new Error('hydration-safe interaction startup is missing');
 }
