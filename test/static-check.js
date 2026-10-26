@@ -49,8 +49,8 @@ if (!interactionSource.includes('observeListContainer') || !interactionSource.in
 if (!interactionSource.includes("card.matches('.floor-single-card')")) {
   throw new Error('homepage official promotion card filter is missing');
 }
-if (!pageMainSource.includes("if (jsonKind === 'homepage')") || !pageMainSource.includes('homepageResponsesPassedThrough')) {
-  throw new Error('homepage feed pass-through guard is missing');
+if (!pageMainSource.includes('HOMEPAGE_UPSTREAM_SIZE = 30') || !pageMainSource.includes('buildHomepagePageResponse')) {
+  throw new Error('homepage 6x4 upstream refill is missing');
 }
 if (!interactionSource.includes("document.readyState === 'loading'") || !interactionSource.includes('PAGE_CHROME_SELECTOR')) {
   throw new Error('hydration-safe interaction startup is missing');

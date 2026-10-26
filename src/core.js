@@ -267,6 +267,7 @@
     const adKeywords = uniqueStrings([...remoteAdKeywords, ...adFilter.customKeywords]);
     return {
       enabled: config.browserExtension.enabled,
+      homepagePagedMode: config.browserExtension.homepagePagedMode,
       mutedUidHashes: [...mutedUidHashes],
       legacyUidHashes: [...legacyUidHashes],
       absoluteRules: config.danmakuAssistant.absoluteRules,

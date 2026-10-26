@@ -59,8 +59,12 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   const storageListeners = [];
   const storageState = {};
   let fetchBytes = new Uint8Array();
+  let lastFetchUrl = '';
   const windowProxy = {
-    fetch: async () => new Response(fetchBytes),
+    fetch: async (input) => {
+      lastFetchUrl = input instanceof Request ? input.url : String(input);
+      return new Response(fetchBytes);
+    },
     addEventListener(type, listener) {
       if (type === 'message') listeners.push(listener);
     },
@@ -144,8 +148,18 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.fetchHookInstalled, true);
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.xhrHookInstalled, true);
 
-  await windowProxy.fetch('https://api.bilibili.com/x/web-interface/index/top/feed/rcmd');
+  const homepageItems = Array.from({ length: 30 }, (_, index) => index < 26
+    ? { goto: 'av', bvid: `BV${index}`, title: `视频 ${index}` }
+    : { goto: 'bangumi', title: `推广 ${index}` });
+  fetchBytes = JSON.stringify({ code: 0, data: { item: homepageItems } });
+  const homepageResponse = await windowProxy.fetch('https://api.bilibili.com/x/web-interface/wbi/index/top/feed/rcmd?ps=12');
+  const homepageJson = await homepageResponse.json();
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageResponsesPassedThrough, 1);
+  assert.equal(new URL(lastFetchUrl).searchParams.get('ps'), '30');
+  assert.equal(homepageJson.data.item.length, 24);
+  assert.ok(homepageJson.data.item.every((item) => item.goto === 'av'));
+  assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageRequestsExpanded, 1);
+  assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageItemsReturned, 24);
 
   const elem = concat(wireVarint(2, 469291), wireVarint(3, 1), wireBytes(6, 'cbf43926'), wireBytes(7, '点击屏蔽测试'));
   fetchBytes = wireBytes(1, elem);

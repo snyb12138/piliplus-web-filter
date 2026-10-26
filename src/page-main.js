@@ -29,6 +29,11 @@
     uploaderItemsDropped: 0,
     adItemsDropped: 0,
     homepageResponsesPassedThrough: 0,
+    homepageRequestsExpanded: 0,
+    homepageRequestedSize: 0,
+    homepageUpstreamSize: 0,
+    homepageItemsReturned: 0,
+    homepageNonVideoItemsDropped: 0,
     failure: null,
   };
   Object.defineProperty(globalThis, MARKER_NAME, { value: diagnostic, configurable: true });
@@ -58,6 +63,8 @@
   let resolveFirstRules;
   const firstRules = new Promise((resolve) => { resolveFirstRules = resolve; });
   const MAX_CATALOG_ENTRIES = 12_000;
+  const HOMEPAGE_PAGE_SIZE = 24;
+  const HOMEPAGE_UPSTREAM_SIZE = 30;
   const danmakuCatalog = [];
   let catalogPage = `${location.origin}${location.pathname}${location.search}`;
 
@@ -160,6 +167,35 @@
     }
   }
 
+  function getRequestUrl(input) {
+    if (input instanceof Request) return input.url;
+    return String(input);
+  }
+
+  function expandHomepageRequest(input, init) {
+    try {
+      const url = new URL(getRequestUrl(input), location.href);
+      const requestedSize = Math.max(1, Number(url.searchParams.get('ps') || 12));
+      diagnostic.homepageRequestedSize = requestedSize;
+      diagnostic.homepageUpstreamSize = HOMEPAGE_UPSTREAM_SIZE;
+      if (requestedSize >= HOMEPAGE_UPSTREAM_SIZE) return [input, init];
+      url.searchParams.set('ps', String(HOMEPAGE_UPSTREAM_SIZE));
+      diagnostic.homepageRequestsExpanded += 1;
+      const nextInit = init ? { ...init } : {};
+      if (!nextInit.credentials || nextInit.credentials === 'same-origin') nextInit.credentials = 'include';
+      if (input instanceof Request) return [new Request(url.href, input), nextInit];
+      return [url.href, nextInit];
+    } catch (_) {
+      return [input, init];
+    }
+  }
+
+  function isRegularHomepageVideo(item) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    const goto = String(item.goto || item.card_goto || '').toLowerCase();
+    return Boolean(item.bvid) && (!goto || goto === 'av' || goto === 'video');
+  }
+
   async function waitForInitialRules() {
     if (rulesReceived) return;
     await Promise.race([firstRules, new Promise((resolve) => setTimeout(resolve, 600))]);
@@ -203,6 +239,49 @@
     }
   }
 
+  async function buildHomepagePageResponse(response) {
+    if (!response.ok || !runtime.enabled || runtime.homepagePagedMode === false) return response;
+    try {
+      const json = await response.clone().json();
+      if (!Array.isArray(json?.data?.item)) return response;
+      const blocked = runtime.blockedUploaders.map((user) => user.mid);
+      const adFilter = runtime.adFilter || {};
+      const result = PageCore.filterContentJson(json, blocked, {
+        kind: 'homepage',
+        filterAds: adFilter.enabled !== false && adFilter.homepage !== false,
+        keywords: adFilter.keywords || [],
+      });
+      const items = result.data?.data?.item;
+      if (!Array.isArray(items)) return response;
+      const videos = items.filter(isRegularHomepageVideo).slice(0, HOMEPAGE_PAGE_SIZE);
+      const nonVideoDropped = items.length - items.filter(isRegularHomepageVideo).length;
+      result.data.data.item = videos;
+      diagnostic.uploaderResponsesSeen += 1;
+      diagnostic.uploaderItemsDropped += result.uploaderDropped;
+      diagnostic.adItemsDropped += result.adsDropped + nonVideoDropped;
+      diagnostic.homepageNonVideoItemsDropped += nonVideoDropped;
+      diagnostic.homepageItemsReturned = videos.length;
+      post('content-filter-result', {
+        uploaderDropped: result.uploaderDropped,
+        adsDropped: result.adsDropped + nonVideoDropped,
+        uploaderHits: result.uploaderHits,
+        adHits: result.adHits,
+      });
+      const headers = new Headers(response.headers);
+      headers.delete('content-length');
+      headers.delete('content-encoding');
+      headers.set('content-type', 'application/json; charset=utf-8');
+      return new Response(JSON.stringify(result.data), {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    } catch (error) {
+      emitDiagnostic({ level: 'warning', code: 'homepage-page-build-failed', message: `首页固定页构建失败，已放行原响应：${error.message}` });
+      return response;
+    }
+  }
+
   function applyFilter(raw) {
     if (!runtime.enabled) return null;
     diagnostic.segmentsSeen += 1;
@@ -222,7 +301,11 @@
     const jsonKind = classifyJsonResponse(request);
     if (jsonKind === 'homepage') {
       diagnostic.homepageResponsesPassedThrough += 1;
-      return nativeFetch(...args);
+      if (!runtime.enabled || runtime.homepagePagedMode === false) return nativeFetch(...args);
+      return waitForInitialRules().then(() => {
+        const expanded = expandHomepageRequest(args[0], args[1]);
+        return nativeFetch(...expanded);
+      }).then(buildHomepagePageResponse);
     }
     if (jsonKind) {
       return waitForInitialRules().then(() => nativeFetch(...args)).then((response) => filterContentResponse(response, jsonKind));
