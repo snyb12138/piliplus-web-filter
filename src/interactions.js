@@ -238,6 +238,15 @@
       html[data-pbp-hide-home-carousel="1"] [class*="recommended-container_"] .container:has(> .recommended-swipe){
         grid-auto-flow:row dense!important;
       }
+      html[data-pbp-hide-home-carousel="1"] [data-pbp-home-grid="1"]{
+        grid-auto-flow:row dense!important;
+      }
+      html[data-pbp-hide-home-carousel="1"] [data-pbp-home-grid="1"] > :not(.recommended-swipe){
+        grid-area:auto!important;
+        grid-column:auto!important;
+        grid-row:auto!important;
+        order:0!important;
+      }
       html[data-pbp-hide-home-carousel="1"] .recommended-container_floor-aside .container.is-version8 > :is(.feed-card,.bili-feed-card),
       html[data-pbp-hide-home-carousel="1"] .recommended-container_floor-aside .container:has(> .recommended-swipe) > :is(.feed-card,.bili-feed-card),
       html[data-pbp-hide-home-carousel="1"] [class*="recommended-container_"] .container.is-version8 > :is(.feed-card,.bili-feed-card),
@@ -379,7 +388,10 @@
   function findHomepageGrid(container) {
     let node = container;
     while (node) {
-      if (isHomepageGrid(node)) return node;
+      if (isHomepageGrid(node)) {
+        node.dataset.pbpHomeGrid = '1';
+        return node;
+      }
       if (node.parentElement) {
         node = node.parentElement;
         continue;
@@ -397,7 +409,10 @@
     } catch (_) {
       return [];
     }
-    return candidates.filter(isHomepageGrid);
+    return candidates.filter(isHomepageGrid).map((grid) => {
+      grid.dataset.pbpHomeGrid = '1';
+      return grid;
+    });
   }
 
   function findHomepageGridItem(container) {

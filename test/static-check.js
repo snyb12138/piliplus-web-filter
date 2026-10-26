@@ -57,6 +57,9 @@ if (!interactionSource.includes('ROUTE_SETTLE_MS') || !interactionSource.include
 if (!interactionSource.includes('domEnhancementsAllowed') || !fs.readFileSync(path.join(root, 'options.html'), 'utf8').includes('id="videoPageDomEnhancements"')) {
   throw new Error('video page compatibility mode is missing');
 }
+if (!interactionSource.includes('data-pbp-home-grid') || !interactionSource.includes('order:0!important')) {
+  throw new Error('homepage direct grid-item normalization is missing');
+}
 if (!fs.existsSync(path.join(root, 'config/ad-keywords.json'))) throw new Error('bundled advertising keywords are missing');
 if (!manifest.permissions?.includes('alarms')) throw new Error('advertising rule synchronization requires alarms');
 if (!fs.readFileSync(path.join(root, 'options.html'), 'utf8').includes('id="hideHomepageCarousel"')) {
