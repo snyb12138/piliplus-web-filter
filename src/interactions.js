@@ -116,6 +116,7 @@
   let scanTimer = null;
   let activeRoute = `${location.origin}${location.pathname}${location.search}`;
   let routeHoldUntil = 0;
+  let videoInteractionHoldUntil = 0;
   let danmakuMenuBusy = false;
   let homepageRefreshReloading = false;
   let homepageAutofillTimer = null;
@@ -438,13 +439,21 @@
     return text && keywords.some((keyword) => keyword && text.includes(keyword));
   }
 
-  function domEnhancementsAllowed() {
-    const isVideoPage = location.hostname === 'www.bilibili.com' && /^\/(?:zh-(?:Hans|CN)\/)?video\//u.test(location.pathname);
-    return !isVideoPage || Api.getConfig().browserExtension.videoPageDomEnhancements === true;
+  function isVideoPageLocation() {
+    return location.hostname === 'www.bilibili.com' && /^\/(?:zh-(?:Hans|CN)\/)?video\//u.test(location.pathname);
+  }
+
+  function videoAdDomFallbackAllowed() {
+    return !isVideoPageLocation() || Api.getConfig().browserExtension.videoPageDomEnhancements === true;
+  }
+
+  function uploaderCardEnhancementAllowed(container) {
+    if (!isVideoPageLocation()) return true;
+    return Boolean(closestAcrossRoots(container, VIDEO_CONTENT_REGION_SELECTOR));
   }
 
   function scanAdRoot(root) {
-    if (!domEnhancementsAllowed()) return;
+    if (!videoAdDomFallbackAllowed()) return;
     const rules = Api.getAdFilter();
     if (!rules.enabled) return;
     let cards = [];
@@ -1105,7 +1114,6 @@
   }
 
   function scanCommentRoot(root) {
-    if (!domEnhancementsAllowed()) return;
     let anchors;
     try {
       anchors = root instanceof Element && root.matches('a[href*="space.bilibili.com/"]') ? [root] : [];
@@ -1210,7 +1218,6 @@
   }
 
   function scanUploaderRoot(root) {
-    if (!domEnhancementsAllowed()) return;
     let anchors;
     try {
       anchors = root instanceof Element && root.matches('a[href*="space.bilibili.com/"]') ? [root] : [];
@@ -1225,6 +1232,7 @@
       const nearestContainer = closestAcrossRoots(anchor, UPLOADER_CARD_SELECTOR);
       if (!nearestContainer) continue;
       const container = findHomepageGridItem(nearestContainer);
+      if (!uploaderCardEnhancementAllowed(container)) continue;
       const candidate = { anchor, mid, score: nameScore(anchor) };
       const previous = grouped.get(container);
       if (!previous || candidate.score > previous.score) grouped.set(container, candidate);
@@ -1306,6 +1314,7 @@
     if (route === activeRoute) return false;
     activeRoute = route;
     routeHoldUntil = Date.now() + ROUTE_SETTLE_MS;
+    videoInteractionHoldUntil = isVideoPageLocation() ? Date.now() + ROUTE_SETTLE_MS : 0;
     pendingRoots.clear();
     pendingRoots.add(document);
     Api.record('routeScanDeferrals');
@@ -1319,8 +1328,9 @@
       scheduleContentScan(document);
       return;
     }
-    const remaining = routeHoldUntil - Date.now();
+    const remaining = Math.max(routeHoldUntil, videoInteractionHoldUntil) - Date.now();
     if (remaining > 0) {
+      if (isVideoPageLocation() && videoInteractionHoldUntil > Date.now()) Api.record('videoPageInteractionDeferrals');
       scanScheduled = true;
       scanTimer = setTimeout(flushContentScan, remaining);
       return;
@@ -1375,6 +1385,7 @@
     }
     installDanmakuPointerStyle();
     installLayoutStyle();
+    if (isVideoPageLocation()) videoInteractionHoldUntil = Date.now() + ROUTE_SETTLE_MS;
     applyLayoutPreferences();
     document.addEventListener('click', (event) => {
       handleDanmakuClick(event).catch((error) => showToast(`弹幕净化操作失败：${error.message}`));

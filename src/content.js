@@ -105,9 +105,13 @@
       routeScanDeferrals: 0,
       homepageRefreshes: 0,
       homepageRefreshFailures: 0,
+      videoPageInteractionDeferrals: 0,
     },
     compatibility: {
       videoPageDomEnhancements: false,
+      videoPageCommentActions: true,
+      videoPageUploaderActions: true,
+      videoPageAdDomFallback: false,
     },
   };
 
@@ -134,6 +138,7 @@
   function applyNormalizedConfig(normalized, adRuleCache = {}) {
     config = normalized.config;
     status.compatibility.videoPageDomEnhancements = config.browserExtension.videoPageDomEnhancements === true;
+    status.compatibility.videoPageAdDomFallback = config.browserExtension.videoPageDomEnhancements === true;
     normalized.diagnostics.forEach(recordDiagnostic);
     runtime = Core.buildRuntimeRules(config, { adKeywords: adRuleCache.keywords || [] });
     runtime.diagnostics.forEach(recordDiagnostic);
