@@ -64,7 +64,7 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   const windowProxy = {
     fetch: async (input) => {
       lastFetchUrl = input instanceof Request ? input.url : String(input);
-      if (lastFetchUrl.includes('/x/web-interface/wbi/index/top/feed/rcmd') && homepageFetchPayloads.length) {
+      if (lastFetchUrl.includes('/x/web-interface/') && lastFetchUrl.includes('/index/top/feed/rcmd') && homepageFetchPayloads.length) {
         return new Response(JSON.stringify(homepageFetchPayloads.shift()));
       }
       return new Response(fetchBytes);
@@ -175,6 +175,28 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageRefillRequests, 1);
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageRefillResponses, 1);
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageRefillItemsAdded, 15);
+
+  homepageFetchPayloads.push({
+    code: 0,
+    data: {
+      item: Array.from({ length: 24 }, (_, index) => ({
+        goto: 'av',
+        bvid: `BVBATCH${index}`,
+        title: `主动换批 ${index}`,
+        pic: `https://example.test/${index}.jpg`,
+        duration: 60 + index,
+        owner: { mid: 1000 + index, name: `UP ${index}` },
+        stat: { view: 10000 + index, danmaku: index },
+      })),
+    },
+  });
+  const homepageBatch = await isolated.PiliPlusPurifyContentApi.requestHomepageBatch();
+  assert.equal(homepageBatch.length, 24);
+  assert.equal(homepageBatch[0].bvid, 'BVBATCH0');
+  assert.equal(homepageBatch[0].owner.mid, 1000);
+  assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageBatchRequests, 1);
+  assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageBatchResponses, 1);
+  assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageBatchItems, 24);
 
   const elem = concat(wireVarint(2, 469291), wireVarint(3, 1), wireBytes(6, 'cbf43926'), wireBytes(7, '点击屏蔽测试'));
   fetchBytes = wireBytes(1, elem);

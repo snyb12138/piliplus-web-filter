@@ -38,6 +38,10 @@
     homepageRefillResponses: 0,
     homepageRefillItemsAdded: 0,
     homepageRefillFailure: null,
+    homepageBatchRequests: 0,
+    homepageBatchResponses: 0,
+    homepageBatchItems: 0,
+    homepageBatchFailure: null,
     failure: null,
   };
   Object.defineProperty(globalThis, MARKER_NAME, { value: diagnostic, configurable: true });
@@ -70,6 +74,7 @@
   const HOMEPAGE_PAGE_SIZE = 24;
   const HOMEPAGE_UPSTREAM_SIZE = 30;
   const HOMEPAGE_MAX_REFILLS = 2;
+  let homepageBatchSequence = 0;
   const danmakuCatalog = [];
   let catalogPage = `${location.origin}${location.pathname}${location.search}`;
 
@@ -377,6 +382,58 @@
     }
   }
 
+  function projectHomepageVideo(item) {
+    return {
+      bvid: String(item?.bvid || ''),
+      title: String(item?.title || ''),
+      pic: String(item?.pic || ''),
+      duration: Math.max(0, Number(item?.duration) || 0),
+      pubdate: Math.max(0, Number(item?.pubdate) || 0),
+      owner: {
+        mid: Math.max(0, Number(item?.owner?.mid) || 0),
+        name: String(item?.owner?.name || item?.author || ''),
+      },
+      stat: {
+        view: Math.max(0, Number(item?.stat?.view) || 0),
+        danmaku: Math.max(0, Number(item?.stat?.danmaku) || 0),
+      },
+    };
+  }
+
+  async function requestHomepageBatch(id) {
+    diagnostic.homepageBatchRequests += 1;
+    diagnostic.homepageBatchFailure = null;
+    try {
+      await waitForInitialRules();
+      homepageBatchSequence += 1;
+      const cursor = Math.max(1, Math.floor(Date.now() / 1000) + homepageBatchSequence);
+      const url = new URL('https://api.bilibili.com/x/web-interface/index/top/feed/rcmd');
+      url.searchParams.set('ps', String(HOMEPAGE_UPSTREAM_SIZE));
+      url.searchParams.set('fresh_type', '3');
+      url.searchParams.set('version', '1');
+      url.searchParams.set('feed_version', 'V8');
+      url.searchParams.set('fresh_idx', String(cursor));
+      url.searchParams.set('fresh_idx_1h', String(cursor));
+      url.searchParams.set('brush', String(homepageBatchSequence));
+      const init = { credentials: 'include' };
+      const response = await nativeFetch(url.href, init);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const filtered = await buildHomepagePageResponse(response, url.href, init);
+      const json = await filtered.json();
+      const items = Array.isArray(json?.data?.item)
+        ? json.data.item.filter(isRegularHomepageVideo).slice(0, HOMEPAGE_PAGE_SIZE).map(projectHomepageVideo)
+        : [];
+      if (!items.length) throw new Error('推荐接口没有返回可用视频');
+      diagnostic.homepageBatchResponses += 1;
+      diagnostic.homepageBatchItems = items.length;
+      post('homepage-batch-result', { id, items });
+    } catch (error) {
+      diagnostic.homepageBatchFailure = error.message;
+      emitDiagnostic({ level: 'warning', code: 'homepage-batch-failed', message: `首页换批失败：${error.message}` });
+      post('homepage-batch-result', { id, items: [], error: error.message });
+    }
+  }
+
   function applyFilter(raw) {
     if (!runtime.enabled) return null;
     diagnostic.segmentsSeen += 1;
@@ -506,6 +563,8 @@
         id: packet.id,
         result: resolveDanmakuSender(packet.content, currentMs),
       });
+    } else if (packet.kind === 'request-homepage-batch' && Number.isSafeInteger(packet.id)) {
+      requestHomepageBatch(packet.id);
     }
   });
 

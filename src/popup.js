@@ -49,8 +49,10 @@
     const layout = status.layout || {};
     const compacted = Number(layout.emptySlotsHidden) || 0;
     const compactedText = compacted ? ` · 已回收 ${compacted} 个空槽` : '';
+    const managedText = layout.customBatchActive ? ` · 托管换批 ${layout.customBatchRendered || 0}` : '';
+    const refreshErrorText = layout.refreshError ? ` · 换批错误 ${layout.refreshError}` : '';
     const pageText = layout.pagedMode
-      ? ` · 固定页 ${layout.pageVisible || 0}/${layout.pageSize || 22}${layout.statsPanelMounted ? ' + 统计卡' : ''}${layout.refreshSettling ? ' 换批稳定中' : (layout.pageReady ? ' 已就绪' : ' 补充中')}`
+      ? ` · 固定页 ${layout.pageVisible || 0}/${layout.pageSize || 22}${layout.statsPanelMounted ? ' + 统计卡' : ''}${managedText}${layout.refreshSettling ? ' 换批中' : (layout.pageReady ? ' 已就绪' : ' 补充中')}${refreshErrorText}`
       : '';
     elements.layoutSummary.textContent = !layout.preferenceEnabled
       ? '首页推广轮播：保留显示'

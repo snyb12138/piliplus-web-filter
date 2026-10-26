@@ -108,7 +108,7 @@
   const adRecords = new Set();
   const ROUTE_SETTLE_MS = 1500;
   const INCREMENTAL_SCAN_DELAY_MS = 80;
-  const HOMEPAGE_REFRESH_RELOAD_DELAY_MS = 80;
+  const HOMEPAGE_AUTOFILL_DELAY_MS = 1200;
   const HOMEPAGE_GRID_SLOTS = 24;
   const HOMEPAGE_VIDEO_SLOTS = 22;
   const FEEDBACK_URL = 'https://github.com/snyb12138/piliplus-web-filter/issues';
@@ -118,6 +118,8 @@
   let routeHoldUntil = 0;
   let danmakuMenuBusy = false;
   let homepageRefreshReloading = false;
+  let homepageAutofillTimer = null;
+  let homepageRefreshError = null;
   let uiHost;
   let uiRoot;
   let toastTimer;
@@ -277,6 +279,25 @@
       html[data-pbp-home-paged="1"] :is(.flexible-roll-btn,.flexible-roll-btn-inner){
         display:none!important;
       }
+      html[data-pbp-home-paged="1"] [data-pbp-home-grid="1"] > [data-pbp-native-hidden="1"]{
+        display:none!important;
+      }
+      html[data-pbp-home-paged="1"] [data-pbp-home-grid="1"] > .pbp-home-custom-card{
+        display:block!important;
+        min-width:0!important;
+        overflow:visible!important;
+      }
+      .pbp-home-custom-cover{position:relative;display:block;overflow:hidden;border-radius:6px;background:#f1f2f3;aspect-ratio:16/9}
+      .pbp-home-custom-cover img{display:block;width:100%;height:100%;object-fit:cover;transition:transform .2s ease}
+      .pbp-home-custom-cover:hover img{transform:scale(1.025)}
+      .pbp-home-custom-duration{position:absolute;right:6px;bottom:5px;padding:1px 5px;border-radius:4px;background:rgba(0,0,0,.64);color:#fff;font-size:12px;line-height:18px}
+      .pbp-home-custom-info{padding-top:9px;min-width:0}
+      .pbp-home-custom-title{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;min-height:44px;color:#18191c;font-size:15px;line-height:22px;text-decoration:none}
+      .pbp-home-custom-title:hover{color:#00aeec}
+      .pbp-home-custom-meta{display:flex;align-items:center;gap:8px;margin-top:4px;min-width:0;color:#9499a0;font-size:13px;line-height:20px}
+      .pbp-home-custom-owner{overflow:hidden;min-width:0;color:inherit;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}
+      .pbp-home-custom-owner:hover{color:#00aeec}
+      .pbp-home-custom-stat{flex:none;white-space:nowrap}
       html[data-pbp-home-paged="1"] [data-pbp-home-grid="1"] > [data-pbp-home-stats="1"]{
         display:flex!important;
         grid-column:span 2!important;
@@ -361,6 +382,9 @@
       statsPanelMounted: page.statsPanelMounted,
       refreshSettling: page.refreshSettling,
       inactiveGridsIgnored: page.inactiveGridsIgnored,
+      customBatchActive: page.customBatchActive,
+      customBatchRendered: page.customBatchRendered,
+      refreshError: page.refreshError,
     });
   }
 
@@ -645,6 +669,125 @@
     return true;
   }
 
+  function formatHomepageDuration(rawSeconds) {
+    const total = Math.max(0, Math.floor(Number(rawSeconds) || 0));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    return hours > 0
+      ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+      : `${minutes}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  function formatHomepageCount(raw) {
+    const value = Math.max(0, Number(raw) || 0);
+    if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(value >= 1_000_000_000 ? 0 : 1)}亿`;
+    if (value >= 10_000) return `${(value / 10_000).toFixed(value >= 100_000 ? 0 : 1)}万`;
+    return String(Math.floor(value));
+  }
+
+  function normalizeHomepageImage(raw) {
+    const value = String(raw || '');
+    return value.startsWith('//') ? `https:${value}` : value;
+  }
+
+  function createHomepageVideoCard(item) {
+    const bvid = String(item?.bvid || '').trim();
+    if (!/^BV[0-9A-Za-z]+$/u.test(bvid)) return null;
+    const card = createElement('article', 'feed-card pbp-home-custom-card');
+    card.dataset.pbpCustomVideo = bvid;
+    const videoUrl = `https://www.bilibili.com/video/${bvid}/`;
+    const cover = createElement('a', 'pbp-home-custom-cover');
+    cover.href = videoUrl;
+    const image = createElement('img');
+    image.src = normalizeHomepageImage(item.pic);
+    image.alt = String(item.title || '视频封面');
+    image.loading = 'lazy';
+    image.referrerPolicy = 'no-referrer';
+    cover.append(image, createElement('span', 'pbp-home-custom-duration', formatHomepageDuration(item.duration)));
+    const info = createElement('div', 'pbp-home-custom-info');
+    const title = createElement('a', 'pbp-home-custom-title', String(item.title || '未命名视频'));
+    title.href = videoUrl;
+    title.title = String(item.title || '');
+    const meta = createElement('div', 'pbp-home-custom-meta');
+    const ownerMid = Math.max(0, Number(item?.owner?.mid) || 0);
+    const owner = createElement('a', 'pbp-home-custom-owner', String(item?.owner?.name || '未知 UP 主'));
+    owner.href = ownerMid ? `https://space.bilibili.com/${ownerMid}` : videoUrl;
+    owner.title = String(item?.owner?.name || '');
+    const stat = createElement('span', 'pbp-home-custom-stat', `${formatHomepageCount(item?.stat?.view)} 播放`);
+    meta.append(owner, stat);
+    info.append(title, meta);
+    card.append(cover, info);
+    return card;
+  }
+
+  function restoreHomepageNativeCards() {
+    for (const item of document.querySelectorAll('[data-pbp-native-hidden="1"]')) {
+      item.removeAttribute('data-pbp-native-hidden');
+    }
+    for (const card of document.querySelectorAll('.pbp-home-custom-card')) card.remove();
+  }
+
+  function renderHomepageBatch(items) {
+    const grid = activeHomepageGrid();
+    if (!grid) throw new Error('没有找到首页推荐网格');
+    const cards = items.slice(0, HOMEPAGE_VIDEO_SLOTS).map(createHomepageVideoCard).filter(Boolean);
+    if (!cards.length) throw new Error('换批结果中没有可渲染的视频');
+    for (const old of grid.querySelectorAll(':scope > .pbp-home-custom-card')) old.remove();
+    for (const item of grid.children) {
+      if (!(item instanceof Element) || item.matches('.recommended-swipe,.load-more-anchor,[data-pbp-home-stats],.pbp-home-custom-card,script,style')) continue;
+      if (isHomepageVideoItem(item) || item.matches('.feed-card,.bili-feed-card,.floor-single-card')) {
+        item.dataset.pbpNativeHidden = '1';
+      }
+    }
+    const panel = grid.querySelector(':scope > [data-pbp-home-stats="1"]');
+    const fragment = document.createDocumentFragment();
+    cards.forEach((card) => fragment.append(card));
+    grid.insertBefore(fragment, panel || null);
+    grid.dataset.pbpCustomBatch = '1';
+    return cards.length;
+  }
+
+  async function refreshHomepageBatch({ automatic = false } = {}) {
+    if (homepageRefreshReloading || !isHomepageLocation()) return;
+    homepageRefreshReloading = true;
+    homepageRefreshError = null;
+    document.documentElement.setAttribute('data-pbp-home-refreshing', '1');
+    applyLayoutPreferences();
+    try {
+      const items = await Api.requestHomepageBatch();
+      const rendered = renderHomepageBatch(items);
+      Api.record('homepageRefreshes');
+      if (!automatic) showToast(`已换一批：显示 ${rendered} 个视频`);
+    } catch (error) {
+      homepageRefreshError = error.message;
+      Api.record('homepageRefreshFailures');
+      if (!document.querySelector('.pbp-home-custom-card')) restoreHomepageNativeCards();
+      showToast(`首页换批失败：${error.message}`);
+    } finally {
+      homepageRefreshReloading = false;
+      document.documentElement.removeAttribute('data-pbp-home-refreshing');
+      scheduleContentScan(document);
+      applyLayoutPreferences();
+    }
+  }
+
+  function scheduleHomepageAutofill(enabled, visible) {
+    if (!enabled || visible >= HOMEPAGE_VIDEO_SLOTS || homepageRefreshReloading || document.querySelector('.pbp-home-custom-card')) {
+      clearTimeout(homepageAutofillTimer);
+      homepageAutofillTimer = null;
+      return;
+    }
+    if (homepageAutofillTimer !== null) return;
+    homepageAutofillTimer = setTimeout(() => {
+      homepageAutofillTimer = null;
+      if (!isHomepageLocation() || Api.getConfig().browserExtension.homepagePagedMode === false) return;
+      const grid = activeHomepageGrid();
+      const usable = grid ? [...grid.children].filter((item) => isHomepageVideoItem(item) && isNativelyVisible(item)).length : 0;
+      if (usable < HOMEPAGE_VIDEO_SLOTS) refreshHomepageBatch({ automatic: true });
+    }, HOMEPAGE_AUTOFILL_DELAY_MS);
+  }
+
   function clearHomepagePageMarkers() {
     for (const item of document.querySelectorAll('[data-pbp-page-overflow],[data-pbp-page-pending]')) {
       item.removeAttribute('data-pbp-page-overflow');
@@ -655,6 +798,7 @@
   function applyHomepagePageLimit() {
     const extension = Api.getConfig().browserExtension;
     const enabled = isHomepageLocation() && extension.enabled !== false && extension.homepagePagedMode !== false;
+    if (!enabled && document.querySelector('[data-pbp-native-hidden="1"],.pbp-home-custom-card')) restoreHomepageNativeCards();
     document.documentElement.toggleAttribute('data-pbp-home-paged', enabled);
     if (enabled) document.documentElement.setAttribute('data-pbp-home-paged', '1');
     clearHomepagePageMarkers();
@@ -688,6 +832,10 @@
     const nativeRefreshButtons = enabled
       ? document.querySelectorAll('.feed-roll-btn,button.roll-btn,.flexible-roll-btn,.flexible-roll-btn-inner').length
       : 0;
+    const customBatchRendered = activeGrid
+      ? activeGrid.querySelectorAll(':scope > .pbp-home-custom-card').length
+      : 0;
+    scheduleHomepageAutofill(enabled, visible);
     return {
       enabled,
       visible,
@@ -699,6 +847,9 @@
       statsPanelMounted,
       refreshSettling,
       inactiveGridsIgnored: Math.max(0, grids.length - (activeGrid ? 1 : 0)),
+      customBatchActive: customBatchRendered > 0,
+      customBatchRendered,
+      refreshError: homepageRefreshError,
     };
   }
 
@@ -711,10 +862,7 @@
     event.stopPropagation();
     event.stopImmediatePropagation();
     if (homepageRefreshReloading) return;
-    homepageRefreshReloading = true;
-    document.documentElement.setAttribute('data-pbp-home-refreshing', '1');
-    clearHomepagePageMarkers();
-    setTimeout(() => location.reload(), HOMEPAGE_REFRESH_RELOAD_DELAY_MS);
+    refreshHomepageBatch().catch((error) => showToast(`首页换批失败：${error.message}`));
   }
 
   function inspectHomepageGridLayout() {

@@ -45,7 +45,9 @@
   let runtime = Core.buildRuntimeRules(config);
   let domMatcher = Core.compileRuntimeMatcher(runtime, recordDiagnostic);
   let senderRequestSeq = 0;
+  let homepageBatchRequestSeq = 0;
   const pendingSenderRequests = new Map();
+  const pendingHomepageBatchRequests = new Map();
   const diagnosticLastSeen = new Map();
   const status = {
     connected: false,
@@ -81,6 +83,9 @@
       statsPanelMounted: false,
       refreshSettling: false,
       inactiveGridsIgnored: 0,
+      customBatchActive: false,
+      customBatchRendered: 0,
+      refreshError: null,
       lastAppliedAt: null,
     },
     interaction: {
@@ -97,6 +102,8 @@
       adsDomHidden: 0,
       adsApiDropped: 0,
       routeScanDeferrals: 0,
+      homepageRefreshes: 0,
+      homepageRefreshFailures: 0,
     },
     compatibility: {
       videoPageDomEnhancements: false,
@@ -169,6 +176,19 @@
     });
   }
 
+  function requestHomepageBatch() {
+    if (!token) return Promise.reject(new Error('页面数据桥尚未连接'));
+    const id = ++homepageBatchRequestSeq;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (!pendingHomepageBatchRequests.delete(id)) return;
+        reject(new Error('推荐换批请求超时'));
+      }, 12_000);
+      pendingHomepageBatchRequests.set(id, { resolve, reject, timer });
+      post('request-homepage-batch', { id });
+    });
+  }
+
   function acquireToken(candidate) {
     if (!/^[0-9a-f]{32}$/u.test(candidate || '')) return false;
     if (token === candidate) return true;
@@ -216,6 +236,14 @@
         pendingSenderRequests.delete(packet.id);
         clearTimeout(pending.timer);
         pending.resolve(packet.result || null);
+      }
+    } else if (packet.kind === 'homepage-batch-result') {
+      const pending = pendingHomepageBatchRequests.get(packet.id);
+      if (pending) {
+        pendingHomepageBatchRequests.delete(packet.id);
+        clearTimeout(pending.timer);
+        if (packet.error) pending.reject(new Error(packet.error));
+        else pending.resolve(Array.isArray(packet.items) ? packet.items : []);
       }
     }
   });
@@ -323,6 +351,7 @@
       interaction: { ...status.interaction },
     }),
     requestDanmakuSender,
+    requestHomepageBatch,
     record(name, delta = 1) {
       if (Object.hasOwn(status.interaction, name)) status.interaction[name] += delta;
     },
@@ -353,6 +382,9 @@
         statsPanelMounted: next.statsPanelMounted === true,
         refreshSettling: next.refreshSettling === true,
         inactiveGridsIgnored: Number(next.inactiveGridsIgnored) || 0,
+        customBatchActive: next.customBatchActive === true,
+        customBatchRendered: Number(next.customBatchRendered) || 0,
+        refreshError: typeof next.refreshError === 'string' && next.refreshError ? next.refreshError : null,
         lastAppliedAt: new Date().toISOString(),
       };
     },
