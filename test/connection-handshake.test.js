@@ -60,9 +60,13 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   const storageState = {};
   let fetchBytes = new Uint8Array();
   let lastFetchUrl = '';
+  const homepageFetchPayloads = [];
   const windowProxy = {
     fetch: async (input) => {
       lastFetchUrl = input instanceof Request ? input.url : String(input);
+      if (lastFetchUrl.includes('/x/web-interface/wbi/index/top/feed/rcmd') && homepageFetchPayloads.length) {
+        return new Response(JSON.stringify(homepageFetchPayloads.shift()));
+      }
       return new Response(fetchBytes);
     },
     addEventListener(type, listener) {
@@ -148,10 +152,18 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.fetchHookInstalled, true);
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.xhrHookInstalled, true);
 
-  const homepageItems = Array.from({ length: 30 }, (_, index) => index < 26
-    ? { goto: 'av', bvid: `BV${index}`, title: `视频 ${index}` }
-    : { goto: 'bangumi', title: `推广 ${index}` });
-  fetchBytes = JSON.stringify({ code: 0, data: { item: homepageItems } });
+  const firstHomepageItems = [
+    ...Array.from({ length: 9 }, (_, index) => ({ goto: 'av', bvid: `BVFIRST${index}`, title: `首批视频 ${index}` })),
+    ...Array.from({ length: 3 }, (_, index) => ({ goto: 'ad', title: `广告 ${index}` })),
+    { goto: 'bangumi', title: '番剧推广' },
+  ];
+  const refillHomepageItems = Array.from({ length: 20 }, (_, index) => ({
+    goto: 'av', bvid: `BVREFILL${index}`, title: `补充视频 ${index}`,
+  }));
+  homepageFetchPayloads.push(
+    { code: 0, data: { item: firstHomepageItems } },
+    { code: 0, data: { item: refillHomepageItems } },
+  );
   const homepageResponse = await windowProxy.fetch('https://api.bilibili.com/x/web-interface/wbi/index/top/feed/rcmd?ps=12');
   const homepageJson = await homepageResponse.json();
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageResponsesPassedThrough, 1);
@@ -160,6 +172,9 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   assert.ok(homepageJson.data.item.every((item) => item.goto === 'av'));
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageRequestsExpanded, 1);
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageItemsReturned, 24);
+  assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageRefillRequests, 1);
+  assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageRefillResponses, 1);
+  assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageRefillItemsAdded, 15);
 
   const elem = concat(wireVarint(2, 469291), wireVarint(3, 1), wireBytes(6, 'cbf43926'), wireBytes(7, '点击屏蔽测试'));
   fetchBytes = wireBytes(1, elem);

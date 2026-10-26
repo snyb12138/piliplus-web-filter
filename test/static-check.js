@@ -49,7 +49,7 @@ if (!interactionSource.includes('observeListContainer') || !interactionSource.in
 if (!interactionSource.includes("card.matches('.floor-single-card')")) {
   throw new Error('homepage official promotion card filter is missing');
 }
-if (!pageMainSource.includes('HOMEPAGE_UPSTREAM_SIZE = 30') || !pageMainSource.includes('buildHomepagePageResponse')) {
+if (!pageMainSource.includes('HOMEPAGE_UPSTREAM_SIZE = 30') || !pageMainSource.includes('HOMEPAGE_MAX_REFILLS = 2') || !pageMainSource.includes('homepageRefillRequest')) {
   throw new Error('homepage 6x4 upstream refill is missing');
 }
 if (!interactionSource.includes("document.readyState === 'loading'") || !interactionSource.includes('PAGE_CHROME_SELECTOR')) {

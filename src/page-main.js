@@ -34,6 +34,10 @@
     homepageUpstreamSize: 0,
     homepageItemsReturned: 0,
     homepageNonVideoItemsDropped: 0,
+    homepageRefillRequests: 0,
+    homepageRefillResponses: 0,
+    homepageRefillItemsAdded: 0,
+    homepageRefillFailure: null,
     failure: null,
   };
   Object.defineProperty(globalThis, MARKER_NAME, { value: diagnostic, configurable: true });
@@ -65,6 +69,7 @@
   const MAX_CATALOG_ENTRIES = 12_000;
   const HOMEPAGE_PAGE_SIZE = 24;
   const HOMEPAGE_UPSTREAM_SIZE = 30;
+  const HOMEPAGE_MAX_REFILLS = 2;
   const danmakuCatalog = [];
   let catalogPage = `${location.origin}${location.pathname}${location.search}`;
 
@@ -196,6 +201,33 @@
     return Boolean(item.bvid) && (!goto || goto === 'av' || goto === 'video');
   }
 
+  function homepageVideoKey(item) {
+    return String(item?.bvid || item?.aid || item?.id || item?.uri || '');
+  }
+
+  function homepageRefillRequest(input, init, attempt) {
+    try {
+      const url = new URL(getRequestUrl(input), location.href);
+      url.searchParams.set('ps', String(HOMEPAGE_UPSTREAM_SIZE));
+      for (const key of ['fresh_idx', 'fresh_idx_1h', 'brush']) {
+        const current = Number(url.searchParams.get(key) || 1);
+        url.searchParams.set(key, String(Math.max(1, current + attempt)));
+      }
+      const fetchRow = Number(url.searchParams.get('fetch_row') || 0);
+      url.searchParams.set('fetch_row', String(Math.max(0, fetchRow) + attempt * 6));
+      // WBI signing fields are optional for this endpoint. Removing the stale
+      // signature prevents a changed cursor from being paired with an old hash.
+      url.searchParams.delete('w_rid');
+      url.searchParams.delete('wts');
+      const nextInit = init ? { ...init } : {};
+      if (!nextInit.credentials || nextInit.credentials === 'same-origin') nextInit.credentials = 'include';
+      if (input instanceof Request) return [new Request(url.href, input), nextInit];
+      return [url.href, nextInit];
+    } catch (_) {
+      return null;
+    }
+  }
+
   async function waitForInitialRules() {
     if (rulesReceived) return;
     await Promise.race([firstRules, new Promise((resolve) => setTimeout(resolve, 600))]);
@@ -239,39 +271,102 @@
     }
   }
 
-  async function buildHomepagePageResponse(response) {
+  function cleanHomepagePayload(json) {
+    if (!Array.isArray(json?.data?.item)) return null;
+    const blocked = runtime.blockedUploaders.map((user) => user.mid);
+    const adFilter = runtime.adFilter || {};
+    const result = PageCore.filterContentJson(json, blocked, {
+      kind: 'homepage',
+      filterAds: adFilter.enabled !== false && adFilter.homepage !== false,
+      keywords: adFilter.keywords || [],
+    });
+    const items = result.data?.data?.item;
+    if (!Array.isArray(items)) return null;
+    const videos = items.filter(isRegularHomepageVideo);
+    return {
+      payload: result.data,
+      videos,
+      uploaderDropped: result.uploaderDropped,
+      adsDropped: result.adsDropped,
+      nonVideoDropped: items.length - videos.length,
+      uploaderHits: result.uploaderHits,
+      adHits: result.adHits,
+    };
+  }
+
+  async function buildHomepagePageResponse(response, requestInput, requestInit) {
     if (!response.ok || !runtime.enabled || runtime.homepagePagedMode === false) return response;
     try {
       const json = await response.clone().json();
-      if (!Array.isArray(json?.data?.item)) return response;
-      const blocked = runtime.blockedUploaders.map((user) => user.mid);
-      const adFilter = runtime.adFilter || {};
-      const result = PageCore.filterContentJson(json, blocked, {
-        kind: 'homepage',
-        filterAds: adFilter.enabled !== false && adFilter.homepage !== false,
-        keywords: adFilter.keywords || [],
-      });
-      const items = result.data?.data?.item;
-      if (!Array.isArray(items)) return response;
-      const videos = items.filter(isRegularHomepageVideo).slice(0, HOMEPAGE_PAGE_SIZE);
-      const nonVideoDropped = items.length - items.filter(isRegularHomepageVideo).length;
-      result.data.data.item = videos;
+      const first = cleanHomepagePayload(json);
+      if (!first) return response;
+      const collected = [];
+      const seen = new Set();
+      let uploaderDropped = 0;
+      let adsDropped = 0;
+      let nonVideoDropped = 0;
+      const uploaderHits = [];
+      const adHits = [];
+      const append = (batch) => {
+        uploaderDropped += batch.uploaderDropped;
+        adsDropped += batch.adsDropped;
+        nonVideoDropped += batch.nonVideoDropped;
+        uploaderHits.push(...batch.uploaderHits);
+        adHits.push(...batch.adHits);
+        let added = 0;
+        for (const item of batch.videos) {
+          const key = homepageVideoKey(item);
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          collected.push(item);
+          added += 1;
+          if (collected.length >= HOMEPAGE_PAGE_SIZE) break;
+        }
+        return added;
+      };
+      append(first);
+      diagnostic.homepageRefillFailure = null;
+      for (let attempt = 1; collected.length < HOMEPAGE_PAGE_SIZE && attempt <= HOMEPAGE_MAX_REFILLS; attempt += 1) {
+        const refillArgs = homepageRefillRequest(requestInput, requestInit, attempt);
+        if (!refillArgs) break;
+        diagnostic.homepageRefillRequests += 1;
+        try {
+          const refillResponse = await nativeFetch(...refillArgs);
+          if (!refillResponse.ok) {
+            diagnostic.homepageRefillFailure = `HTTP ${refillResponse.status}`;
+            break;
+          }
+          const refillJson = await refillResponse.json();
+          const refill = cleanHomepagePayload(refillJson);
+          if (!refill) {
+            diagnostic.homepageRefillFailure = 'invalid-payload';
+            break;
+          }
+          diagnostic.homepageRefillResponses += 1;
+          diagnostic.homepageRefillItemsAdded += append(refill);
+        } catch (error) {
+          diagnostic.homepageRefillFailure = error.message;
+          break;
+        }
+      }
+      const videos = collected.slice(0, HOMEPAGE_PAGE_SIZE);
+      first.payload.data.item = videos;
       diagnostic.uploaderResponsesSeen += 1;
-      diagnostic.uploaderItemsDropped += result.uploaderDropped;
-      diagnostic.adItemsDropped += result.adsDropped + nonVideoDropped;
+      diagnostic.uploaderItemsDropped += uploaderDropped;
+      diagnostic.adItemsDropped += adsDropped + nonVideoDropped;
       diagnostic.homepageNonVideoItemsDropped += nonVideoDropped;
       diagnostic.homepageItemsReturned = videos.length;
       post('content-filter-result', {
-        uploaderDropped: result.uploaderDropped,
-        adsDropped: result.adsDropped + nonVideoDropped,
-        uploaderHits: result.uploaderHits,
-        adHits: result.adHits,
+        uploaderDropped,
+        adsDropped: adsDropped + nonVideoDropped,
+        uploaderHits: uploaderHits.slice(0, 50),
+        adHits: adHits.slice(0, 50),
       });
       const headers = new Headers(response.headers);
       headers.delete('content-length');
       headers.delete('content-encoding');
       headers.set('content-type', 'application/json; charset=utf-8');
-      return new Response(JSON.stringify(result.data), {
+      return new Response(JSON.stringify(first.payload), {
         status: response.status,
         statusText: response.statusText,
         headers,
@@ -304,8 +399,8 @@
       if (!runtime.enabled || runtime.homepagePagedMode === false) return nativeFetch(...args);
       return waitForInitialRules().then(() => {
         const expanded = expandHomepageRequest(args[0], args[1]);
-        return nativeFetch(...expanded);
-      }).then(buildHomepagePageResponse);
+        return nativeFetch(...expanded).then((response) => buildHomepagePageResponse(response, expanded[0], expanded[1]));
+      });
     }
     if (jsonKind) {
       return waitForInitialRules().then(() => nativeFetch(...args)).then((response) => filterContentResponse(response, jsonKind));
