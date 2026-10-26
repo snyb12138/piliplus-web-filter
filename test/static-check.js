@@ -67,6 +67,9 @@ if (!interactionSource.includes('videoAdDomFallbackAllowed') || !interactionSour
 if (!interactionSource.includes('videoInteractionHoldUntil') || !interactionSource.includes('videoPageInteractionDeferrals')) {
   throw new Error('video page safe interaction restoration is missing');
 }
+if (!interactionSource.includes('bili-comment-replies-renderer') || !interactionSource.includes('commentReplyButtons')) {
+  throw new Error('nested comment reply purification is missing');
+}
 if (!interactionSource.includes('data-pbp-home-grid') || !interactionSource.includes('order:0!important') || !interactionSource.includes('margin-top:0!important')) {
   throw new Error('homepage direct grid-item normalization is missing');
 }

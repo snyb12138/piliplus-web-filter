@@ -94,6 +94,7 @@
       danmakuTextRulesAdded: 0,
       danmakuSendersAdded: 0,
       commentButtons: 0,
+      commentReplyButtons: 0,
       commentUsersBlocked: 0,
       commentUsersMarked: 0,
       uploaderButtons: 0,

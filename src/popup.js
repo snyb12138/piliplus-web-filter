@@ -45,7 +45,7 @@
     elements.blocked.textContent = status.blocked || 0;
     elements.diagnosticCount.textContent = status.diagnostics?.length ? `诊断 ${status.diagnostics.length}` : '';
     const interaction = status.interaction || {};
-    elements.interactionSummary.textContent = `净化助手：广告 ${Number(interaction.adsDomHidden || 0) + Number(interaction.adsApiDropped || 0)} · 弹幕操作 ${interaction.danmakuMenus || 0} · 评论按钮 ${interaction.commentButtons || 0} · UP按钮 ${interaction.uploaderButtons || 0} · 隐藏投稿 ${Number(interaction.uploaderCardsHidden || 0) + Number(interaction.uploaderApiDropped || 0)} · 新增屏蔽 ${Number(interaction.danmakuTextRulesAdded || 0) + Number(interaction.danmakuSendersAdded || 0) + Number(interaction.commentUsersBlocked || 0) + Number(interaction.uploaderUsersBlocked || 0)}`;
+    elements.interactionSummary.textContent = `净化助手：广告 ${Number(interaction.adsDomHidden || 0) + Number(interaction.adsApiDropped || 0)} · 弹幕操作 ${interaction.danmakuMenus || 0} · 评论按钮 ${interaction.commentButtons || 0}（回复 ${interaction.commentReplyButtons || 0}） · UP按钮 ${interaction.uploaderButtons || 0} · 隐藏投稿 ${Number(interaction.uploaderCardsHidden || 0) + Number(interaction.uploaderApiDropped || 0)} · 新增屏蔽 ${Number(interaction.danmakuTextRulesAdded || 0) + Number(interaction.danmakuSendersAdded || 0) + Number(interaction.commentUsersBlocked || 0) + Number(interaction.uploaderUsersBlocked || 0)}`;
     const layout = status.layout || {};
     const compacted = Number(layout.emptySlotsHidden) || 0;
     const compactedText = compacted ? ` · 已回收 ${compacted} 个空槽` : '';

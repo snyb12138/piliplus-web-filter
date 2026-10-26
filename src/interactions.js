@@ -32,7 +32,7 @@
     '.reply-list',
     '.bili-comments',
   ].join(',');
-  const COMMENT_HOST_SELECTOR = 'bili-comments, bili-comment-thread-renderer, bili-comment-renderer, bili-comment-reply-renderer';
+  const COMMENT_HOST_SELECTOR = 'bili-comments, bili-comment-thread-renderer, bili-comment-renderer, bili-comment-replies-renderer, bili-comment-reply-renderer';
   const UPLOADER_CARD_SELECTOR = [
     'bili-video-card',
     '.bili-video-card',
@@ -1151,6 +1151,9 @@
       commentByContainer.set(container, record);
       commentRecords.add(record);
       Api.record('commentButtons');
+      if (container.matches('bili-comment-reply-renderer,.sub-reply-item,[data-parent-id],[data-parent-rpid]')) {
+        Api.record('commentReplyButtons');
+      }
     }
     applyMutedComments();
   }
