@@ -238,6 +238,20 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
     Object.fromEntries(Object.entries(isolated.PiliPlusPurifyContentApi.getStatusSnapshot().commentFold).filter(([key]) => key !== 'lastAppliedAt')),
     { activePlaceholders: 2, revealedRpids: 1, created: 3, removed: 1, rebuilt: 1, orphaned: 0, routeResets: 0 },
   );
+  isolated.PiliPlusPurifyContentApi.setCommentScoringStatus({
+    scored: 12,
+    pureMention: 3,
+    autoHidden: 2,
+    pendingComments: 2,
+    pendingAccounts: 1,
+    dismissedAccounts: 0,
+    panelMounted: true,
+    routeResets: 0,
+  });
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(isolated.PiliPlusPurifyContentApi.getStatusSnapshot().commentScoring).filter(([key]) => key !== 'lastAppliedAt')),
+    { scored: 12, pureMention: 3, autoHidden: 2, pendingComments: 2, pendingAccounts: 1, dismissedAccounts: 0, panelMounted: true, routeResets: 0 },
+  );
 
   const mainComment = new FakeElement('bili-comment-thread-renderer');
   mainComment.data = {
@@ -266,6 +280,10 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   isolated.PiliPlusPurifyContentApi.registerCommentElement('900000000000000002', replyComment);
   assert.deepEqual(
     Array.from(isolated.PiliPlusPurifyContentApi.getMountedCommentRpidsByMid('123456789')),
+    ['900000000000000001', '900000000000000002'],
+  );
+  assert.deepEqual(
+    Array.from(isolated.PiliPlusPurifyContentApi.getMountedCommentRecords(), (record) => record.rpid),
     ['900000000000000001', '900000000000000002'],
   );
 

@@ -6,7 +6,8 @@
   Object.defineProperty(globalThis, MARKER, { value: true, configurable: true });
 
   const Api = globalThis.PiliPlusPurifyContentApi;
-  if (!Api) return;
+  const CommentScoring = globalThis.PiliPlusPurifyCommentScoring;
+  if (!Api || !CommentScoring) return;
 
   const COMMENT_CONTAINER_SELECTOR = [
     'bili-comment-renderer',
@@ -105,12 +106,22 @@
   const commentRecords = new Set();
   const commentPlaceholders = new Map();
   const revealedRpids = new Set();
+  const pendingCommentAccounts = new Map();
+  const dismissedCandidateMids = new Set();
   const commentFoldStats = {
     created: 0,
     removed: 0,
     rebuilt: 0,
     orphaned: 0,
     routeResets: 0,
+  };
+  const commentScoringStats = {
+    routeResets: 0,
+  };
+  let commentScoringCurrent = {
+    scored: 0,
+    pureMention: 0,
+    pendingComments: 0,
   };
   const uploaderByContainer = new WeakMap();
   const uploaderRecords = new Set();
@@ -133,6 +144,7 @@
   let uiHost;
   let uiRoot;
   let toastTimer;
+  let commentSidePanel;
 
   function createElement(tag, className, text) {
     const element = document.createElement(tag);
@@ -158,7 +170,12 @@
       .cancel{margin-top:10px;width:100%;border:0;background:transparent;color:#73777f;padding:8px;cursor:pointer}
       .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;max-width:min(520px,calc(100vw - 32px));background:#202124;color:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 8px 28px rgba(0,0,0,.3);pointer-events:auto;font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
       .toast button{border:0;background:transparent;color:#ff9ab7;font-weight:700;cursor:pointer;padding:2px 4px}
+      .comment-side{position:fixed;right:12px;top:148px;width:184px;display:grid;gap:8px;pointer-events:auto;font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text1,#18191c)}
+      .comment-side:has(details[open]){width:min(310px,calc(100vw - 24px))}.comment-side details{border:1px solid var(--line_regular,#e3e5e7);border-radius:10px;background:var(--bg1,#fff);box-shadow:0 6px 22px rgba(0,0,0,.12);overflow:hidden}
+      .comment-side summary{display:flex;align-items:center;justify-content:space-between;gap:8px;list-style:none;padding:9px 11px;cursor:pointer;font-weight:650;color:var(--text1,#18191c);user-select:none}.comment-side summary::-webkit-details-marker{display:none}.comment-side summary::after{content:'›';font-size:18px;color:#9499a0;transform:rotate(90deg)}.comment-side details[open] summary::after{transform:rotate(-90deg)}
+      .side-list{display:grid;gap:7px;max-height:min(42vh,420px);overflow:auto;padding:0 9px 9px}.side-empty{padding:4px 2px 7px;color:var(--text3,#9499a0)}.side-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 8px;align-items:center;padding:8px;border-radius:8px;background:var(--bg2,#f6f7f8)}.side-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}.side-meta{grid-column:1/-1;color:var(--text3,#9499a0);font-size:11px;overflow-wrap:anywhere}.side-actions{display:flex;gap:5px}.side-actions button{border:0;border-radius:6px;padding:4px 7px;background:var(--bg3,#e3e5e7);color:var(--text2,#61666d);cursor:pointer}.side-actions button.primary{background:#00aeec;color:#fff}.side-more{padding:4px 2px;color:var(--text3,#9499a0);font-size:11px}
       @media(prefers-color-scheme:dark){.card{background:#24262b;color:#f5f6f7}.body,.action-detail{color:#afb3bb}.action{background:#24262b;color:#f5f6f7;border-color:#40434b}.action:hover{background:#33272d}.action.danger{color:#ff92ad}.cancel{color:#afb3bb}}
+      @media(max-width:900px){.comment-side{top:auto;bottom:14px;right:10px}}
     `;
     uiRoot.append(style);
     (document.documentElement || document).append(uiHost);
@@ -1054,6 +1071,130 @@
     button.style.whiteSpace = 'nowrap';
   }
 
+  function sidePanelDetails(title, count, open) {
+    const details = createElement('details');
+    details.open = open;
+    const summary = createElement('summary');
+    summary.append(createElement('span', '', title), createElement('span', '', String(count)));
+    const list = createElement('div', 'side-list');
+    details.append(summary, list);
+    return { details, list };
+  }
+
+  function sidePanelItem(name, meta) {
+    const item = createElement('div', 'side-item');
+    item.append(createElement('div', 'side-name', name), createElement('div', 'side-meta', meta));
+    const actions = createElement('div', 'side-actions');
+    item.insertBefore(actions, item.lastElementChild);
+    return { item, actions };
+  }
+
+  function updateCommentScoringStatus() {
+    let autoHidden = 0;
+    for (const entry of commentPlaceholders.values()) {
+      if (entry.kind === 'pureMention' && entry.placeholder?.isConnected) autoHidden += 1;
+    }
+    Api.setCommentScoringStatus({
+      ...commentScoringCurrent,
+      autoHidden,
+      pendingAccounts: pendingCommentAccounts.size,
+      dismissedAccounts: dismissedCandidateMids.size,
+      panelMounted: commentSidePanel?.isConnected === true,
+      ...commentScoringStats,
+    });
+  }
+
+  function revealPendingComment(candidate) {
+    const entry = [...candidate.comments.values()].find((comment) => commentPlaceholders.get(comment.rpid)?.renderer?.isConnected);
+    if (!entry) return showToast('这条评论当前未挂载');
+    revealedRpids.add(entry.rpid);
+    const renderer = commentPlaceholders.get(entry.rpid)?.renderer;
+    removeCommentPlaceholder(entry.rpid, { restore: true });
+    renderer?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    updateCommentFoldStatus();
+    updateCommentScoringStatus();
+  }
+
+  function renderCommentSidePanel() {
+    if (!isVideoPageLocation()) {
+      commentSidePanel?.remove();
+      commentSidePanel = null;
+      updateCommentScoringStatus();
+      return;
+    }
+    const root = ensureUi();
+    const blockedOpen = commentSidePanel?.querySelector('[data-pbp-side-blocked]')?.open === true;
+    const pendingOpen = commentSidePanel?.querySelector('[data-pbp-side-pending]')?.open === true;
+    if (!commentSidePanel?.isConnected) {
+      commentSidePanel = createElement('aside', 'comment-side');
+      commentSidePanel.setAttribute('aria-label', '评论净化名单');
+      root.append(commentSidePanel);
+    }
+    commentSidePanel.replaceChildren();
+    const mutedUsers = Api.getConfig().mutedUsers || [];
+    const blocked = sidePanelDetails('已屏蔽', mutedUsers.length, blockedOpen);
+    blocked.details.dataset.pbpSideBlocked = '1';
+    if (!mutedUsers.length) blocked.list.append(createElement('div', 'side-empty', '暂无持久屏蔽账号'));
+    for (const user of mutedUsers.slice(0, 100)) {
+      const mid = Number(user.mid);
+      const row = sidePanelItem(user.name || `UID ${mid}`, `UID ${mid}`);
+      const remove = createElement('button', '', '移除');
+      remove.type = 'button';
+      remove.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        await Api.removeMutedUser(mid);
+        applyMutedComments();
+        showToast('已从评论屏蔽名单移除');
+      });
+      row.actions.append(remove);
+      blocked.list.append(row.item);
+    }
+    if (mutedUsers.length > 100) blocked.list.append(createElement('div', 'side-more', `另有 ${mutedUsers.length - 100} 个账号，请在扩展设置中管理`));
+
+    const pendingEntries = [...pendingCommentAccounts.values()];
+    const pending = sidePanelDetails('待屏蔽', pendingEntries.length, pendingOpen);
+    pending.details.dataset.pbpSidePending = '1';
+    if (!pendingEntries.length) pending.list.append(createElement('div', 'side-empty', '暂无多重纯 @ 候选'));
+    for (const candidate of pendingEntries.slice(0, 100)) {
+      const counts = [...candidate.comments.values()].map((comment) => comment.mentionCount);
+      const row = sidePanelItem(candidate.name || `UID ${candidate.mid}`, `${candidate.comments.size} 条评论 · 最多 ${Math.max(...counts)} 次 @ · UID ${candidate.mid}`);
+      const show = createElement('button', '', '显示');
+      show.type = 'button';
+      show.addEventListener('click', (event) => {
+        event.stopPropagation();
+        revealPendingComment(candidate);
+      });
+      const ignore = createElement('button', '', '忽略');
+      ignore.type = 'button';
+      ignore.addEventListener('click', (event) => {
+        event.stopPropagation();
+        dismissedCandidateMids.add(String(candidate.mid));
+        pendingCommentAccounts.delete(String(candidate.mid));
+        renderCommentSidePanel();
+        updateCommentScoringStatus();
+      });
+      const block = createElement('button', 'primary', '屏蔽');
+      block.type = 'button';
+      block.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        clearRevealedCommentsForMid(candidate.mid);
+        const added = await Api.addMutedUser(candidate.mid, candidate.name);
+        if (!added) return showToast('该账号已在评论屏蔽列表中');
+        pendingCommentAccounts.delete(String(candidate.mid));
+        applyMutedComments();
+        showToast('已确认屏蔽该账号', async () => {
+          await Api.removeMutedUser(candidate.mid);
+          applyMutedComments();
+        });
+      });
+      row.actions.append(show, ignore, block);
+      pending.list.append(row.item);
+    }
+    if (pendingEntries.length > 100) pending.list.append(createElement('div', 'side-more', `另有 ${pendingEntries.length - 100} 个当前页面候选`));
+    commentSidePanel.append(blocked.details, pending.details);
+    updateCommentScoringStatus();
+  }
+
   function restoreCommentContainer(container) {
     if (container.dataset?.pbpMutedComment !== '1') return;
     const previous = container.dataset.pbpPreviousDisplay || '';
@@ -1098,8 +1239,17 @@
     }
     cleanupCommentPlaceholders();
     revealedRpids.clear();
-    if (routeReset) commentFoldStats.routeResets += 1;
+    pendingCommentAccounts.clear();
+    dismissedCandidateMids.clear();
+    commentScoringCurrent = { scored: 0, pureMention: 0, pendingComments: 0 };
+    commentSidePanel?.remove();
+    commentSidePanel = null;
+    if (routeReset) {
+      commentFoldStats.routeResets += 1;
+      commentScoringStats.routeResets += 1;
+    }
     updateCommentFoldStatus();
+    updateCommentScoringStatus();
   }
 
   function cleanupCommentPlaceholders() {
@@ -1132,7 +1282,7 @@
     }
   }
 
-  function createCommentPlaceholder(record, renderer) {
+  function createCommentPlaceholder(record, renderer, kind = 'muted', labelText = '') {
     const rpid = String(record.rpid || '');
     if (!/^\d+$/u.test(rpid) || !renderer.parentNode) return false;
     const previous = commentPlaceholders.get(rpid);
@@ -1156,7 +1306,7 @@
       'background:var(--bg1,#fff)', 'color:var(--text2,#61666d)',
       'font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif',
     ].join(';');
-    const label = createElement('span', '', `已折叠来自 ${record.name || `UID ${record.mid}`} 的评论`);
+    const label = createElement('span', '', labelText || `已折叠来自 ${record.name || `UID ${record.mid}`} 的评论`);
     const reveal = createElement('button', '', '显示一次');
     reveal.type = 'button';
     reveal.dataset.pbpRevealComment = rpid;
@@ -1170,6 +1320,7 @@
       revealedRpids.add(rpid);
       removeCommentPlaceholder(rpid, { restore: true });
       updateCommentFoldStatus();
+      updateCommentScoringStatus();
     });
     placeholder.append(label, reveal);
     renderer.before(placeholder);
@@ -1178,7 +1329,7 @@
       renderer.dataset.pbpMutedComment = '1';
     }
     renderer.style.setProperty('display', 'none', 'important');
-    commentPlaceholders.set(rpid, { placeholder, renderer });
+    commentPlaceholders.set(rpid, { placeholder, renderer, kind });
     commentFoldStats.created += 1;
     if (rebuilding) commentFoldStats.rebuilt += 1;
     return true;
@@ -1187,18 +1338,64 @@
   function applyMutedComments() {
     const muted = new Set(Api.getConfig().mutedUsers.map((user) => Number(user.mid)));
     cleanupCommentPlaceholders();
+    pendingCommentAccounts.clear();
+    const structuredRpids = new Set();
+    let pureMention = 0;
+    let pendingComments = 0;
+    const mountedComments = Api.getMountedCommentRecords();
+    for (const comment of mountedComments) {
+      const rpid = String(comment.rpid || '');
+      const mid = Number(comment.mid);
+      const renderer = comment.element;
+      if (!/^\d+$/u.test(rpid) || !Number.isSafeInteger(mid) || !renderer?.isConnected) continue;
+      structuredRpids.add(rpid);
+      const analysis = CommentScoring.analyzeComment(comment);
+      if (analysis.isPureMention) pureMention += 1;
+      const isMuted = muted.has(mid);
+      if (analysis.pendingReview && !isMuted && !dismissedCandidateMids.has(String(mid))) {
+        pendingComments += 1;
+        let candidate = pendingCommentAccounts.get(String(mid));
+        if (!candidate) {
+          candidate = { mid, name: comment.uname || '', comments: new Map() };
+          pendingCommentAccounts.set(String(mid), candidate);
+        } else if (comment.uname) {
+          candidate.name = comment.uname;
+        }
+        candidate.comments.set(rpid, { rpid, mentionCount: analysis.mentionCount, text: comment.text });
+      }
+      const shouldFold = isMuted || analysis.isPureMention;
+      if (shouldFold && !revealedRpids.has(rpid)) {
+        const kind = isMuted ? 'muted' : 'pureMention';
+        const label = isMuted
+          ? `已屏蔽来自 ${comment.uname || `UID ${mid}`} 的评论`
+          : (analysis.pendingReview
+            ? `已隐藏纯 @ 评论（${analysis.mentionCount} 次提及，待确认屏蔽）`
+            : '已隐藏纯 @ 评论');
+        const existing = commentPlaceholders.get(rpid);
+        if (!existing?.placeholder?.isConnected || existing.renderer !== renderer || existing.kind !== kind) {
+          createCommentPlaceholder({ rpid, mid, name: comment.uname }, renderer, kind, label);
+        } else if (renderer.dataset.pbpMutedComment !== '1' || renderer.style.getPropertyValue('display') !== 'none') {
+          renderer.dataset.pbpPreviousDisplay = renderer.style.getPropertyValue('display');
+          renderer.dataset.pbpMutedComment = '1';
+          renderer.style.setProperty('display', 'none', 'important');
+        }
+      } else {
+        removeCommentPlaceholder(rpid, { restore: true });
+        restoreCommentContainer(renderer);
+      }
+    }
     for (const record of [...commentRecords]) {
       const renderer = commentRenderer(record);
       if (!record.button.isConnected || !record.container.isConnected || !renderer?.isConnected) {
-        if (record.rpid) removeCommentPlaceholder(record.rpid, { restore: false, orphaned: true });
         commentRecords.delete(record);
         continue;
       }
+      if (record.rpid && structuredRpids.has(String(record.rpid))) continue;
       if (muted.has(record.mid)) {
         if (record.rpid && !revealedRpids.has(record.rpid)) {
           const existing = commentPlaceholders.get(record.rpid);
-          if (!existing?.placeholder?.isConnected || existing.renderer !== renderer) {
-            createCommentPlaceholder(record, renderer);
+          if (!existing?.placeholder?.isConnected || existing.renderer !== renderer || existing.kind !== 'muted') {
+            createCommentPlaceholder(record, renderer, 'muted', `已屏蔽来自 ${record.name || `UID ${record.mid}`} 的评论`);
           } else if (renderer.dataset.pbpMutedComment !== '1' || renderer.style.getPropertyValue('display') !== 'none') {
             renderer.dataset.pbpPreviousDisplay = renderer.style.getPropertyValue('display');
             renderer.dataset.pbpMutedComment = '1';
@@ -1219,7 +1416,13 @@
         restoreCommentContainer(renderer);
       }
     }
+    commentScoringCurrent = {
+      scored: mountedComments.length,
+      pureMention,
+      pendingComments,
+    };
     updateCommentFoldStatus();
+    renderCommentSidePanel();
   }
 
   function clearRevealedCommentsForMid(mid) {

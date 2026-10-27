@@ -147,6 +147,17 @@
       routeResets: 0,
       lastAppliedAt: null,
     },
+    commentScoring: {
+      scored: 0,
+      pureMention: 0,
+      autoHidden: 0,
+      pendingComments: 0,
+      pendingAccounts: 0,
+      dismissedAccounts: 0,
+      panelMounted: false,
+      routeResets: 0,
+      lastAppliedAt: null,
+    },
   };
 
   function post(kind, payload = {}) {
@@ -537,6 +548,7 @@
       interaction: { ...status.interaction },
       commentCatalog: { ...status.commentCatalog },
       commentFold: { ...status.commentFold },
+      commentScoring: { ...status.commentScoring },
     }),
     requestDanmakuSender,
     requestHomepageBatch,
@@ -554,6 +566,15 @@
       const account = accountsByMid.get(String(mid || ''));
       if (!account) return [];
       return [...account.rpids].filter((rpid) => elementsByRpid.get(rpid)?.isConnected);
+    },
+    getMountedCommentRecords() {
+      pruneCommentCatalog();
+      const records = [];
+      for (const [rpid, element] of elementsByRpid) {
+        const comment = commentsByRpid.get(rpid);
+        if (comment && element?.isConnected) records.push({ ...comment, element });
+      }
+      return records;
     },
     record(name, delta = 1) {
       if (Object.hasOwn(status.interaction, name)) status.interaction[name] += delta;
@@ -601,6 +622,20 @@
         removed: Math.max(0, Number(next.removed) || 0),
         rebuilt: Math.max(0, Number(next.rebuilt) || 0),
         orphaned: Math.max(0, Number(next.orphaned) || 0),
+        routeResets: Math.max(0, Number(next.routeResets) || 0),
+        lastAppliedAt: new Date().toISOString(),
+      };
+    },
+    setCommentScoringStatus(next) {
+      if (!next || typeof next !== 'object') return;
+      status.commentScoring = {
+        scored: Math.max(0, Number(next.scored) || 0),
+        pureMention: Math.max(0, Number(next.pureMention) || 0),
+        autoHidden: Math.max(0, Number(next.autoHidden) || 0),
+        pendingComments: Math.max(0, Number(next.pendingComments) || 0),
+        pendingAccounts: Math.max(0, Number(next.pendingAccounts) || 0),
+        dismissedAccounts: Math.max(0, Number(next.dismissedAccounts) || 0),
+        panelMounted: next.panelMounted === true,
         routeResets: Math.max(0, Number(next.routeResets) || 0),
         lastAppliedAt: new Date().toISOString(),
       };

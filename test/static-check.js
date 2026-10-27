@@ -103,12 +103,18 @@ if (!interactionSource.includes('pbp-comment-catalog-updated') || !interactionSo
 if (!interactionSource.includes('revealedRpids') || !interactionSource.includes('data-pbp-comment-placeholder') || !interactionSource.includes('显示一次') || !interactionSource.includes('cleanupCommentPlaceholders')) {
   throw new Error('recoverable comment folding lifecycle is missing');
 }
+if (!interactionSource.includes('pendingCommentAccounts') || !interactionSource.includes('data-pbp-side-pending') || !interactionSource.includes('纯 @ 评论')) {
+  throw new Error('conservative pure-mention review UI is missing');
+}
 const contentSource = fs.readFileSync(path.join(root, 'src/content.js'), 'utf8');
 if (!contentSource.includes('commentsByRpid') || !contentSource.includes('accountsByMid') || !contentSource.includes('elementsByRpid') || !contentSource.includes('getMountedCommentRpidsByMid')) {
   throw new Error('isolated-world comment indexes are missing');
 }
 if (!contentSource.includes('commentFold') || !contentSource.includes('setCommentFoldStatus')) {
   throw new Error('comment folding diagnostics are missing');
+}
+if (!contentSource.includes('commentScoring') || !contentSource.includes('setCommentScoringStatus') || !contentSource.includes('getMountedCommentRecords')) {
+  throw new Error('comment scoring diagnostics are missing');
 }
 if (!fs.existsSync(path.join(root, 'config/ad-keywords.json'))) throw new Error('bundled advertising keywords are missing');
 if (!manifest.permissions?.includes('alarms')) throw new Error('advertising rule synchronization requires alarms');
