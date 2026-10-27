@@ -91,6 +91,9 @@ if (!interactionSource.includes('activeHomepageGrid') || !interactionSource.incl
 if (!interactionSource.includes('suppressHomepageNativeGridItems') || !interactionSource.includes('nativeSlotsSuppressed')) {
   throw new Error('homepage managed refresh skeleton suppression is missing');
 }
+if (!interactionSource.includes('ensureHomepageLoadingCards') || !interactionSource.includes('data-pbp-home-initial-loading') || !interactionSource.includes('initialBatchAttempted')) {
+  throw new Error('homepage atomic initial batch loading is missing');
+}
 if (!pageMainSource.includes('homepage-batch-result') || !pageMainSource.includes('homepageBatchRequests')) {
   throw new Error('homepage managed refresh bridge is missing');
 }

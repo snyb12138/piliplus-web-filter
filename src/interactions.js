@@ -128,7 +128,7 @@
   const adRecords = new Set();
   const ROUTE_SETTLE_MS = 1500;
   const INCREMENTAL_SCAN_DELAY_MS = 80;
-  const HOMEPAGE_AUTOFILL_DELAY_MS = 1200;
+  const HOMEPAGE_AUTOFILL_DELAY_MS = 120;
   const HOMEPAGE_GRID_SLOTS = 24;
   const HOMEPAGE_VIDEO_SLOTS = 22;
   const FEEDBACK_URL = 'https://github.com/snyb12138/piliplus-web-filter/issues';
@@ -144,6 +144,7 @@
   let danmakuMenuBusy = false;
   let homepageRefreshReloading = false;
   let homepageAutofillTimer = null;
+  let homepageAutofillAttempted = false;
   let homepageRefreshError = null;
   let uiHost;
   let uiRoot;
@@ -319,6 +320,16 @@
         min-width:0!important;
         overflow:visible!important;
       }
+      html[data-pbp-home-initial-loading="1"] [data-pbp-home-grid="1"] > .pbp-home-loading-card{
+        display:block!important;
+        min-width:0!important;
+        min-height:210px;
+        border-radius:8px;
+        background:linear-gradient(100deg,var(--bg2,#f1f2f3) 20%,var(--bg3,#e3e5e7) 38%,var(--bg2,#f1f2f3) 56%);
+        background-size:220% 100%;
+        animation:pbp-home-loading 1.25s ease-in-out infinite;
+      }
+      @keyframes pbp-home-loading{to{background-position-x:-220%}}
       .pbp-home-custom-cover{position:relative;display:block;overflow:hidden;border-radius:6px;background:#f1f2f3;aspect-ratio:16/9}
       .pbp-home-custom-cover img{display:block;width:100%;height:100%;object-fit:cover;transition:transform .2s ease}
       .pbp-home-custom-cover:hover img{transform:scale(1.025)}
@@ -421,6 +432,8 @@
       customBatchActive: page.customBatchActive,
       customBatchRendered: page.customBatchRendered,
       nativeSlotsSuppressed: page.nativeSlotsSuppressed,
+      initialBatchLoading: page.initialBatchLoading,
+      initialBatchAttempted: page.initialBatchAttempted,
       refreshError: page.refreshError,
     });
   }
@@ -569,6 +582,7 @@
     for (let index = 0; index < grids.length; index += 1) {
       const grid = grids[index];
       if (!isNativelyVisible(grid)) continue;
+      if (grid.dataset.pbpHomeInitialGrid === '1') return grid;
       let visibleVideos = 0;
       for (const item of grid.children) {
         if (item.matches?.('[data-pbp-home-stats],.recommended-swipe,.load-more-anchor')) continue;
@@ -766,13 +780,16 @@
       item.removeAttribute('data-pbp-native-hidden');
     }
     for (const card of document.querySelectorAll('.pbp-home-custom-card')) card.remove();
+    for (const card of document.querySelectorAll('.pbp-home-loading-card')) card.remove();
+    for (const grid of document.querySelectorAll('[data-pbp-home-initial-grid="1"]')) delete grid.dataset.pbpHomeInitialGrid;
+    document.documentElement.removeAttribute('data-pbp-home-initial-loading');
   }
 
   function suppressHomepageNativeGridItems(grid) {
     if (!(grid instanceof Element)) return 0;
     let suppressed = 0;
     for (const item of grid.children) {
-      if (!(item instanceof Element) || item.matches('.recommended-swipe,.load-more-anchor,[data-pbp-home-stats],.pbp-home-custom-card,script,style')) continue;
+      if (!(item instanceof Element) || item.matches('.recommended-swipe,.load-more-anchor,[data-pbp-home-stats],.pbp-home-custom-card,.pbp-home-loading-card,script,style')) continue;
       // Preserve the fixed refresh control if Bilibili ever moves it inside the
       // recommendation grid. Floating refresh controls are hidden separately.
       if (item.matches('.feed-roll-btn,button.roll-btn') || item.querySelector('.feed-roll-btn,button.roll-btn')) continue;
@@ -788,13 +805,36 @@
     const cards = items.slice(0, HOMEPAGE_VIDEO_SLOTS).map(createHomepageVideoCard).filter(Boolean);
     if (!cards.length) throw new Error('换批结果中没有可渲染的视频');
     for (const old of grid.querySelectorAll(':scope > .pbp-home-custom-card')) old.remove();
+    for (const loading of grid.querySelectorAll(':scope > .pbp-home-loading-card')) loading.remove();
     suppressHomepageNativeGridItems(grid);
     const panel = grid.querySelector(':scope > [data-pbp-home-stats="1"]');
     const fragment = document.createDocumentFragment();
     cards.forEach((card) => fragment.append(card));
     grid.insertBefore(fragment, panel || null);
     grid.dataset.pbpCustomBatch = '1';
+    delete grid.dataset.pbpHomeInitialGrid;
+    document.documentElement.removeAttribute('data-pbp-home-initial-loading');
     return cards.length;
+  }
+
+  function ensureHomepageLoadingCards(grid) {
+    if (!(grid instanceof Element) || grid.querySelector(':scope > .pbp-home-custom-card')) return 0;
+    for (const loading of document.querySelectorAll('.pbp-home-loading-card')) {
+      if (loading.parentElement !== grid) loading.remove();
+    }
+    suppressHomepageNativeGridItems(grid);
+    grid.dataset.pbpHomeInitialGrid = '1';
+    let cards = [...grid.querySelectorAll(':scope > .pbp-home-loading-card')];
+    const panel = grid.querySelector(':scope > [data-pbp-home-stats="1"]');
+    while (cards.length < HOMEPAGE_VIDEO_SLOTS) {
+      const skeleton = createElement('article', 'feed-card pbp-home-loading-card');
+      skeleton.setAttribute('aria-hidden', 'true');
+      grid.insertBefore(skeleton, panel || null);
+      cards.push(skeleton);
+    }
+    for (const extra of cards.slice(HOMEPAGE_VIDEO_SLOTS)) extra.remove();
+    document.documentElement.setAttribute('data-pbp-home-initial-loading', '1');
+    return Math.min(cards.length, HOMEPAGE_VIDEO_SLOTS);
   }
 
   async function refreshHomepageBatch({ automatic = false } = {}) {
@@ -821,19 +861,20 @@
     }
   }
 
-  function scheduleHomepageAutofill(enabled, visible) {
-    if (!enabled || visible >= HOMEPAGE_VIDEO_SLOTS || homepageRefreshReloading || document.querySelector('.pbp-home-custom-card')) {
+  function scheduleHomepageAutofill(enabled, visible, grid) {
+    if (!enabled || visible >= HOMEPAGE_VIDEO_SLOTS || homepageRefreshReloading || homepageAutofillAttempted || document.querySelector('.pbp-home-custom-card')) {
       clearTimeout(homepageAutofillTimer);
       homepageAutofillTimer = null;
       return;
     }
+    if (!(grid instanceof Element)) return;
+    ensureHomepageLoadingCards(grid);
     if (homepageAutofillTimer !== null) return;
     homepageAutofillTimer = setTimeout(() => {
       homepageAutofillTimer = null;
       if (!isHomepageLocation() || Api.getConfig().browserExtension.homepagePagedMode === false) return;
-      const grid = activeHomepageGrid();
-      const usable = grid ? [...grid.children].filter((item) => isHomepageVideoItem(item) && isNativelyVisible(item)).length : 0;
-      if (usable < HOMEPAGE_VIDEO_SLOTS) refreshHomepageBatch({ automatic: true });
+      homepageAutofillAttempted = true;
+      refreshHomepageBatch({ automatic: true });
     }, HOMEPAGE_AUTOFILL_DELAY_MS);
   }
 
@@ -862,7 +903,7 @@
     let pendingHidden = 0;
     if (enabled && activeGrid) {
       for (const item of activeGrid.children) {
-        if (!(item instanceof Element) || item.matches('.recommended-swipe,.load-more-anchor,[data-pbp-home-stats],script,style')) continue;
+        if (!(item instanceof Element) || item.matches('.recommended-swipe,.load-more-anchor,[data-pbp-home-stats],.pbp-home-loading-card,script,style')) continue;
         if (item.dataset.pbpAdHidden === '1' || item.dataset.pbpBlockedUploader === '1' || item.dataset.pbpEmptyFeedSlot === '1') continue;
         if (isHomepageVideoItem(item) && isNativelyVisible(item)) {
           if (visible < HOMEPAGE_VIDEO_SLOTS) visible += 1;
@@ -886,7 +927,7 @@
     const customBatchRendered = activeGrid
       ? activeGrid.querySelectorAll(':scope > .pbp-home-custom-card').length
       : 0;
-    scheduleHomepageAutofill(enabled, visible);
+    scheduleHomepageAutofill(enabled, visible, activeGrid);
     return {
       enabled,
       visible,
@@ -901,6 +942,8 @@
       customBatchActive: customBatchRendered > 0,
       customBatchRendered,
       nativeSlotsSuppressed,
+      initialBatchLoading: document.documentElement.getAttribute('data-pbp-home-initial-loading') === '1',
+      initialBatchAttempted: homepageAutofillAttempted,
       refreshError: homepageRefreshError,
     };
   }
@@ -1744,6 +1787,12 @@
     activeRoute = route;
     routeHoldUntil = Date.now() + ROUTE_SETTLE_MS;
     videoInteractionHoldUntil = isVideoPageLocation() ? Date.now() + ROUTE_SETTLE_MS : 0;
+    clearTimeout(homepageAutofillTimer);
+    homepageAutofillTimer = null;
+    homepageAutofillAttempted = false;
+    document.documentElement.removeAttribute('data-pbp-home-initial-loading');
+    for (const grid of document.querySelectorAll('[data-pbp-home-initial-grid="1"]')) delete grid.dataset.pbpHomeInitialGrid;
+    for (const loading of document.querySelectorAll('.pbp-home-loading-card')) loading.remove();
     pendingRoots.clear();
     pendingRoots.add(document);
     clearCommentFoldState(true);

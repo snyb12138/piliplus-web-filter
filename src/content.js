@@ -90,6 +90,8 @@
       customBatchActive: false,
       customBatchRendered: 0,
       nativeSlotsSuppressed: 0,
+      initialBatchLoading: false,
+      initialBatchAttempted: false,
       refreshError: null,
       lastAppliedAt: null,
     },
