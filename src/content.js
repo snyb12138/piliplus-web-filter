@@ -137,6 +137,16 @@
       lastUpdatedAt: null,
       failure: null,
     },
+    commentFold: {
+      activePlaceholders: 0,
+      revealedRpids: 0,
+      created: 0,
+      removed: 0,
+      rebuilt: 0,
+      orphaned: 0,
+      routeResets: 0,
+      lastAppliedAt: null,
+    },
   };
 
   function post(kind, payload = {}) {
@@ -526,6 +536,7 @@
       counts: { ...status.counts },
       interaction: { ...status.interaction },
       commentCatalog: { ...status.commentCatalog },
+      commentFold: { ...status.commentFold },
     }),
     requestDanmakuSender,
     requestHomepageBatch,
@@ -578,6 +589,19 @@
         customBatchRendered: Number(next.customBatchRendered) || 0,
         nativeSlotsSuppressed: Number(next.nativeSlotsSuppressed) || 0,
         refreshError: typeof next.refreshError === 'string' && next.refreshError ? next.refreshError : null,
+        lastAppliedAt: new Date().toISOString(),
+      };
+    },
+    setCommentFoldStatus(next) {
+      if (!next || typeof next !== 'object') return;
+      status.commentFold = {
+        activePlaceholders: Math.max(0, Number(next.activePlaceholders) || 0),
+        revealedRpids: Math.max(0, Number(next.revealedRpids) || 0),
+        created: Math.max(0, Number(next.created) || 0),
+        removed: Math.max(0, Number(next.removed) || 0),
+        rebuilt: Math.max(0, Number(next.rebuilt) || 0),
+        orphaned: Math.max(0, Number(next.orphaned) || 0),
+        routeResets: Math.max(0, Number(next.routeResets) || 0),
         lastAppliedAt: new Date().toISOString(),
       };
     },

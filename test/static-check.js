@@ -100,9 +100,15 @@ if (!pageMainSource.includes('request-comment-catalog') || !pageMainSource.inclu
 if (!interactionSource.includes('pbp-comment-catalog-updated') || !interactionSource.includes('visible-fallback') || !interactionSource.includes('resetCommentCatalogForRoute')) {
   throw new Error('incremental comment catalog lifecycle is missing');
 }
+if (!interactionSource.includes('revealedRpids') || !interactionSource.includes('data-pbp-comment-placeholder') || !interactionSource.includes('显示一次') || !interactionSource.includes('cleanupCommentPlaceholders')) {
+  throw new Error('recoverable comment folding lifecycle is missing');
+}
 const contentSource = fs.readFileSync(path.join(root, 'src/content.js'), 'utf8');
 if (!contentSource.includes('commentsByRpid') || !contentSource.includes('accountsByMid') || !contentSource.includes('elementsByRpid') || !contentSource.includes('getMountedCommentRpidsByMid')) {
   throw new Error('isolated-world comment indexes are missing');
+}
+if (!contentSource.includes('commentFold') || !contentSource.includes('setCommentFoldStatus')) {
+  throw new Error('comment folding diagnostics are missing');
 }
 if (!fs.existsSync(path.join(root, 'config/ad-keywords.json'))) throw new Error('bundled advertising keywords are missing');
 if (!manifest.permissions?.includes('alarms')) throw new Error('advertising rule synchronization requires alarms');

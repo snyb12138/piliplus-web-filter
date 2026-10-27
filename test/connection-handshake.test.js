@@ -225,6 +225,19 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   assert.equal(isolated.PiliPlusPurifyContentApi.getConfig().mutedUsers[0].mid, 123456789);
   assert.equal(await isolated.PiliPlusPurifyContentApi.toggleMarkedUser(33, '标记示例'), true);
   assert.equal(isolated.PiliPlusPurifyContentApi.getConfig().markedUsers[0].mid, 33);
+  isolated.PiliPlusPurifyContentApi.setCommentFoldStatus({
+    activePlaceholders: 2,
+    revealedRpids: 1,
+    created: 3,
+    removed: 1,
+    rebuilt: 1,
+    orphaned: 0,
+    routeResets: 0,
+  });
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(isolated.PiliPlusPurifyContentApi.getStatusSnapshot().commentFold).filter(([key]) => key !== 'lastAppliedAt')),
+    { activePlaceholders: 2, revealedRpids: 1, created: 3, removed: 1, rebuilt: 1, orphaned: 0, routeResets: 0 },
+  );
 
   const mainComment = new FakeElement('bili-comment-thread-renderer');
   mainComment.data = {

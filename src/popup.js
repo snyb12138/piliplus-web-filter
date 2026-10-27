@@ -7,7 +7,7 @@
     'enabled', 'statusDot', 'statusText', 'resetStats', 'segments', 'total', 'blocked',
     'ruleSummary', 'importFile', 'exportFile', 'openOptions', 'message', 'hits',
     'diagnosticCount', 'diagnoseConnection', 'reconnectPage', 'diagnosisCard',
-    'diagnosisSummary', 'diagnosisList', 'copyDiagnosis', 'interactionSummary', 'layoutSummary', 'commentCatalogSummary',
+    'diagnosisSummary', 'diagnosisList', 'copyDiagnosis', 'interactionSummary', 'layoutSummary', 'commentCatalogSummary', 'commentFoldSummary',
   ];
   const elements = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
   const TARGET_URL = /^https?:\/\/(?:[^/.]+\.)*bilibili\.com(?::\d+)?\//iu;
@@ -48,6 +48,8 @@
     elements.interactionSummary.textContent = `净化助手：广告 ${Number(interaction.adsDomHidden || 0) + Number(interaction.adsApiDropped || 0)} · 弹幕操作 ${interaction.danmakuMenus || 0} · 评论按钮 ${interaction.commentButtons || 0}（回复 ${interaction.commentReplyButtons || 0}） · UP按钮 ${interaction.uploaderButtons || 0} · 隐藏投稿 ${Number(interaction.uploaderCardsHidden || 0) + Number(interaction.uploaderApiDropped || 0)} · 新增屏蔽 ${Number(interaction.danmakuTextRulesAdded || 0) + Number(interaction.danmakuSendersAdded || 0) + Number(interaction.commentUsersBlocked || 0) + Number(interaction.uploaderUsersBlocked || 0)}`;
     const catalog = status.commentCatalog || {};
     elements.commentCatalogSummary.textContent = `评论目录：${catalog.comments || 0} 条（主评论 ${catalog.mainComments || 0} / 回复 ${catalog.replies || 0}） · ${catalog.accounts || 0} 个账号 · 已挂载 ${catalog.mountedElements || 0} · 待重试 ${catalog.pending || 0}`;
+    const fold = status.commentFold || {};
+    elements.commentFoldSummary.textContent = `评论折叠：占位 ${fold.activePlaceholders || 0} · 显示一次 ${fold.revealedRpids || 0} · 重建 ${fold.rebuilt || 0} · 孤立清理 ${fold.orphaned || 0}`;
     const layout = status.layout || {};
     const compacted = Number(layout.emptySlotsHidden) || 0;
     const compactedText = compacted ? ` · 已回收 ${compacted} 个空槽` : '';

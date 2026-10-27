@@ -103,6 +103,15 @@
   const observedListContainers = new WeakSet();
   const commentByContainer = new WeakMap();
   const commentRecords = new Set();
+  const commentPlaceholders = new Map();
+  const revealedRpids = new Set();
+  const commentFoldStats = {
+    created: 0,
+    removed: 0,
+    rebuilt: 0,
+    orphaned: 0,
+    routeResets: 0,
+  };
   const uploaderByContainer = new WeakMap();
   const uploaderRecords = new Set();
   const adRecords = new Set();
@@ -1054,23 +1063,167 @@
     delete container.dataset.pbpPreviousDisplay;
   }
 
+  function updateCommentFoldStatus() {
+    let activePlaceholders = 0;
+    for (const entry of commentPlaceholders.values()) {
+      if (entry.placeholder?.isConnected) activePlaceholders += 1;
+    }
+    Api.setCommentFoldStatus({
+      activePlaceholders,
+      revealedRpids: revealedRpids.size,
+      ...commentFoldStats,
+    });
+  }
+
+  function commentRenderer(record) {
+    if (record.renderer instanceof Element) return record.renderer;
+    return record.container;
+  }
+
+  function removeCommentPlaceholder(rpid, { restore = true, orphaned = false } = {}) {
+    const key = String(rpid || '');
+    const entry = commentPlaceholders.get(key);
+    if (!entry) return false;
+    commentPlaceholders.delete(key);
+    if (entry.placeholder?.isConnected) entry.placeholder.remove();
+    if (restore && entry.renderer instanceof Element) restoreCommentContainer(entry.renderer);
+    commentFoldStats.removed += 1;
+    if (orphaned) commentFoldStats.orphaned += 1;
+    return true;
+  }
+
+  function clearCommentFoldState(routeReset = false) {
+    for (const rpid of [...commentPlaceholders.keys()]) {
+      removeCommentPlaceholder(rpid, { restore: true, orphaned: true });
+    }
+    cleanupCommentPlaceholders();
+    revealedRpids.clear();
+    if (routeReset) commentFoldStats.routeResets += 1;
+    updateCommentFoldStatus();
+  }
+
+  function cleanupCommentPlaceholders() {
+    for (const [rpid, entry] of [...commentPlaceholders]) {
+      const rendererConnected = entry.renderer?.isConnected === true;
+      const placeholderConnected = entry.placeholder?.isConnected === true;
+      const sameParent = rendererConnected && placeholderConnected && entry.renderer.parentNode === entry.placeholder.parentNode;
+      if (rendererConnected && placeholderConnected && sameParent) continue;
+      commentPlaceholders.delete(rpid);
+      if (placeholderConnected) entry.placeholder.remove();
+      if (rendererConnected) restoreCommentContainer(entry.renderer);
+      commentFoldStats.removed += 1;
+      commentFoldStats.orphaned += 1;
+    }
+    for (const root of observedRoots) {
+      let placeholders = [];
+      try {
+        placeholders = [...root.querySelectorAll('[data-pbp-comment-placeholder]')];
+      } catch (_) {
+        continue;
+      }
+      for (const placeholder of placeholders) {
+        const rpid = placeholder.getAttribute('data-pbp-comment-placeholder') || '';
+        const entry = commentPlaceholders.get(rpid);
+        if (entry?.placeholder === placeholder && entry.renderer?.isConnected && entry.renderer.parentNode === placeholder.parentNode) continue;
+        placeholder.remove();
+        commentFoldStats.removed += 1;
+        commentFoldStats.orphaned += 1;
+      }
+    }
+  }
+
+  function createCommentPlaceholder(record, renderer) {
+    const rpid = String(record.rpid || '');
+    if (!/^\d+$/u.test(rpid) || !renderer.parentNode) return false;
+    const previous = commentPlaceholders.get(rpid);
+    const rebuilding = Boolean(previous && (!previous.placeholder?.isConnected || previous.renderer !== renderer));
+    if (previous) removeCommentPlaceholder(rpid, { restore: true, orphaned: rebuilding });
+    const siblings = renderer.parentNode.children ? [...renderer.parentNode.children] : [];
+    for (const sibling of siblings) {
+      if (sibling !== renderer && sibling.getAttribute?.('data-pbp-comment-placeholder') === rpid) {
+        sibling.remove();
+        commentFoldStats.removed += 1;
+        commentFoldStats.orphaned += 1;
+      }
+    }
+    const placeholder = createElement('div', 'pbp-comment-placeholder');
+    placeholder.dataset.pbpCommentPlaceholder = rpid;
+    placeholder.setAttribute('role', 'status');
+    placeholder.style.cssText = [
+      'display:flex', 'align-items:center', 'justify-content:space-between', 'gap:12px',
+      'min-height:42px', 'margin:8px 0', 'padding:8px 12px',
+      'border:1px solid var(--line_regular,#e3e5e7)', 'border-radius:8px',
+      'background:var(--bg1,#fff)', 'color:var(--text2,#61666d)',
+      'font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif',
+    ].join(';');
+    const label = createElement('span', '', `已折叠来自 ${record.name || `UID ${record.mid}`} 的评论`);
+    const reveal = createElement('button', '', '显示一次');
+    reveal.type = 'button';
+    reveal.dataset.pbpRevealComment = rpid;
+    reveal.style.cssText = [
+      'flex:0 0 auto', 'border:0', 'background:transparent', 'color:#00aeec',
+      'font:600 13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif', 'cursor:pointer', 'padding:4px 2px',
+    ].join(';');
+    reveal.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      revealedRpids.add(rpid);
+      removeCommentPlaceholder(rpid, { restore: true });
+      updateCommentFoldStatus();
+    });
+    placeholder.append(label, reveal);
+    renderer.before(placeholder);
+    if (renderer.dataset.pbpMutedComment !== '1') {
+      renderer.dataset.pbpPreviousDisplay = renderer.style.getPropertyValue('display');
+      renderer.dataset.pbpMutedComment = '1';
+    }
+    renderer.style.setProperty('display', 'none', 'important');
+    commentPlaceholders.set(rpid, { placeholder, renderer });
+    commentFoldStats.created += 1;
+    if (rebuilding) commentFoldStats.rebuilt += 1;
+    return true;
+  }
+
   function applyMutedComments() {
     const muted = new Set(Api.getConfig().mutedUsers.map((user) => Number(user.mid)));
+    cleanupCommentPlaceholders();
     for (const record of [...commentRecords]) {
-      if (!record.button.isConnected || !record.container.isConnected) {
+      const renderer = commentRenderer(record);
+      if (!record.button.isConnected || !record.container.isConnected || !renderer?.isConnected) {
+        if (record.rpid) removeCommentPlaceholder(record.rpid, { restore: false, orphaned: true });
         commentRecords.delete(record);
         continue;
       }
       if (muted.has(record.mid)) {
-        if (record.container.dataset.pbpMutedComment !== '1') {
-          record.container.dataset.pbpPreviousDisplay = record.container.style.getPropertyValue('display');
-          record.container.dataset.pbpMutedComment = '1';
-          record.container.style.setProperty('display', 'none', 'important');
+        if (record.rpid && !revealedRpids.has(record.rpid)) {
+          const existing = commentPlaceholders.get(record.rpid);
+          if (!existing?.placeholder?.isConnected || existing.renderer !== renderer) {
+            createCommentPlaceholder(record, renderer);
+          } else if (renderer.dataset.pbpMutedComment !== '1' || renderer.style.getPropertyValue('display') !== 'none') {
+            renderer.dataset.pbpPreviousDisplay = renderer.style.getPropertyValue('display');
+            renderer.dataset.pbpMutedComment = '1';
+            renderer.style.setProperty('display', 'none', 'important');
+          }
+        } else if (!record.rpid) {
+          if (renderer.dataset.pbpMutedComment !== '1') {
+            renderer.dataset.pbpPreviousDisplay = renderer.style.getPropertyValue('display');
+            renderer.dataset.pbpMutedComment = '1';
+            renderer.style.setProperty('display', 'none', 'important');
+          }
+        } else {
+          removeCommentPlaceholder(record.rpid, { restore: true });
+          restoreCommentContainer(renderer);
         }
       } else {
-        restoreCommentContainer(record.container);
+        if (record.rpid) removeCommentPlaceholder(record.rpid, { restore: true });
+        restoreCommentContainer(renderer);
       }
     }
+    updateCommentFoldStatus();
+  }
+
+  function clearRevealedCommentsForMid(mid) {
+    for (const rpid of Api.getMountedCommentRpidsByMid(mid)) revealedRpids.delete(rpid);
   }
 
   async function handleCommentAction(record, event) {
@@ -1092,10 +1245,12 @@
         await Api.removeMutedUser(record.mid);
         applyMutedComments();
         showToast('已取消评论屏蔽', async () => {
+          clearRevealedCommentsForMid(record.mid);
           await Api.addMutedUser(record.mid, record.name);
           applyMutedComments();
         });
       } else {
+        clearRevealedCommentsForMid(record.mid);
         const added = await Api.addMutedUser(record.mid, record.name);
         if (!added) return showToast('该账号已在评论屏蔽列表中');
         applyMutedComments();
@@ -1166,6 +1321,7 @@
         mid,
         rpid,
         name: catalog?.uname || '',
+        renderer: catalogElement || container,
         score: nameScore(anchor) + (catalog ? 100 : 0),
       };
       const previous = grouped.get(container);
@@ -1176,6 +1332,7 @@
       if (existing?.button.isConnected) {
         existing.mid = candidate.mid;
         existing.rpid = candidate.rpid;
+        existing.renderer = candidate.renderer;
         if (candidate.name) existing.name = candidate.name;
         existing.button.dataset.mid = String(candidate.mid);
         if (candidate.rpid) existing.button.dataset.rpid = candidate.rpid;
@@ -1190,7 +1347,7 @@
       button.dataset.mid = String(candidate.mid);
       if (candidate.rpid) button.dataset.rpid = candidate.rpid;
       styleCommentButton(button);
-      const record = { button, container, mid: candidate.mid, name, rpid: candidate.rpid };
+      const record = { button, container, renderer: candidate.renderer, mid: candidate.mid, name, rpid: candidate.rpid };
       button.addEventListener('click', (event) => {
         handleCommentAction(record, event).catch((error) => showToast(`评论净化操作失败：${error.message}`));
       });
@@ -1378,6 +1535,7 @@
     videoInteractionHoldUntil = isVideoPageLocation() ? Date.now() + ROUTE_SETTLE_MS : 0;
     pendingRoots.clear();
     pendingRoots.add(document);
+    clearCommentFoldState(true);
     Api.resetCommentCatalogForRoute(currentCommentRoute());
     Api.record('routeScanDeferrals');
     return true;
@@ -1447,6 +1605,7 @@
     }
     installDanmakuPointerStyle();
     installLayoutStyle();
+    updateCommentFoldStatus();
     if (isVideoPageLocation()) videoInteractionHoldUntil = Date.now() + ROUTE_SETTLE_MS;
     applyLayoutPreferences();
     document.addEventListener('click', (event) => {
