@@ -80,6 +80,7 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
     addEventListener(type, listener) {
       if (type === 'message') listeners.push(listener);
     },
+    dispatchEvent() {},
     postMessage(data) {
       for (const listener of [...listeners]) listener({ source: windowProxy, data });
     },
@@ -129,6 +130,9 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
     MutationObserver: FakeMutationObserver,
     Element: FakeElement,
     Text: FakeText,
+    CustomEvent: class CustomEvent {
+      constructor(type, init = {}) { this.type = type; this.detail = init.detail; }
+    },
     TextDecoder,
     TextEncoder,
     Uint8Array,
@@ -175,6 +179,8 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
     { code: 0, data: { item: firstHomepageItems } },
     { code: 0, data: { item: refillHomepageItems } },
   );
+  common.location.pathname = '/';
+  common.location.href = 'https://www.bilibili.com/';
   const homepageResponse = await windowProxy.fetch('https://api.bilibili.com/x/web-interface/wbi/index/top/feed/rcmd?ps=12');
   const homepageJson = await homepageResponse.json();
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageResponsesPassedThrough, 1);
@@ -186,6 +192,13 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageRefillRequests, 1);
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageRefillResponses, 1);
   assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageRefillItemsAdded, 15);
+  assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageInitialBatches, 1);
+  const initialHomepageBatch = isolated.PiliPlusPurifyContentApi.takeHomepageInitialBatch('https://www.bilibili.com/');
+  assert.equal(initialHomepageBatch.length, 24);
+  assert.equal(initialHomepageBatch[0].bvid, 'BVFIRST0');
+  assert.equal(page.__PBP_MAIN_DIAGNOSTIC_V1__.homepageBatchRequests, 0);
+  common.location.pathname = '/video/BV1TEST';
+  common.location.href = 'https://www.bilibili.com/video/BV1TEST';
 
   homepageFetchPayloads.push({
     code: 0,

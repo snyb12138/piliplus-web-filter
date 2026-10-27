@@ -1,6 +1,6 @@
-# PiliPlus Web Filter v1.4.3
+# PiliPlus Web Filter v1.4.4
 
-Chrome/Edge Manifest V3 扩展。插件导入 PiliPlus 屏蔽配置，并统一过滤 Bilibili 广告、弹幕、评论和指定 UP 主内容。v1.4.3 将首页不足22条时的自动补齐改为一次性首屏托管加载，避免先显示少量视频再整体换批。
+Chrome/Edge Manifest V3 扩展。插件导入 PiliPlus 屏蔽配置，并统一过滤 Bilibili 广告、弹幕、评论和指定 UP 主内容。v1.4.4 复用 B 站首个推荐响应渲染固定22条视频，移除首屏重复换批请求。
 
 ## 已实现
 
@@ -86,7 +86,7 @@ Chrome/Edge Manifest V3 扩展。插件导入 PiliPlus 屏蔽配置，并统一�
 - 尚未适配直播 WebSocket 弹幕。
 - BAS、互动弹幕、图片弹幕等特殊类型尚未单独验证。
 - DOM 兜底只能按文本过滤，无法获得发送者 `midHash`。
-- v1.4.3 面向 Chrome/Edge 111 及以上版本。
+- v1.4.4 面向 Chrome/Edge 111 及以上版本。
 - 视频播放页默认恢复主评论和楼中楼净化按钮；相关推荐不批量注入“屏蔽UP”，避免触发 B 站 SPA 页头重绘。已有 UP 黑名单仍会在数据层过滤相关推荐，高风险的视频页广告 DOM 兜底继续默认关闭。
 - UP 主数据层适配覆盖当前常见的推荐、搜索、动态、热门/排行及相关推荐接口；未识别的新页面会退回 DOM 卡片隐藏。
 - 评论快捷按钮兼容传统评论 DOM 和可访问的开放 Shadow DOM；若 Bilibili 使用封闭 Shadow DOM，需针对其外层事件补充适配。

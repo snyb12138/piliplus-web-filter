@@ -46,6 +46,7 @@
   let domMatcher = Core.compileRuntimeMatcher(runtime, recordDiagnostic);
   let senderRequestSeq = 0;
   let homepageBatchRequestSeq = 0;
+  let pendingHomepageInitialBatch = null;
   const pendingSenderRequests = new Map();
   const pendingHomepageBatchRequests = new Map();
   const diagnosticLastSeen = new Map();
@@ -92,6 +93,7 @@
       nativeSlotsSuppressed: 0,
       initialBatchLoading: false,
       initialBatchAttempted: false,
+      initialBatchSource: null,
       refreshError: null,
       lastAppliedAt: null,
     },
@@ -118,6 +120,7 @@
       routeScanDeferrals: 0,
       homepageRefreshes: 0,
       homepageRefreshFailures: 0,
+      homepageInitialBatchRenders: 0,
       videoPageInteractionDeferrals: 0,
     },
     compatibility: {
@@ -462,6 +465,12 @@
         if (packet.error) pending.reject(new Error(packet.error));
         else pending.resolve(Array.isArray(packet.items) ? packet.items : []);
       }
+    } else if (packet.kind === 'homepage-initial-batch') {
+      pendingHomepageInitialBatch = {
+        routeKey: String(packet.routeKey || ''),
+        items: Array.isArray(packet.items) ? packet.items : [],
+      };
+      window.dispatchEvent(new CustomEvent('pbp-homepage-initial-batch'));
     } else if (packet.kind === 'comment-catalog-reset') {
       if (packet.routeKey !== currentCommentRoute()) {
         status.commentCatalog.staleBatches += 1;
@@ -580,6 +589,12 @@
     }),
     requestDanmakuSender,
     requestHomepageBatch,
+    takeHomepageInitialBatch(routeKey = `${location.origin}${location.pathname}`) {
+      if (!pendingHomepageInitialBatch || pendingHomepageInitialBatch.routeKey !== routeKey) return [];
+      const items = pendingHomepageInitialBatch.items;
+      pendingHomepageInitialBatch = null;
+      return items;
+    },
     requestCommentCatalog,
     resetCommentCatalogForRoute(routeKey = currentCommentRoute()) {
       return ensureCommentCatalogRoute(routeKey);

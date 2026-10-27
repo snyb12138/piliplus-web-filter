@@ -38,6 +38,7 @@
     homepageRefillResponses: 0,
     homepageRefillItemsAdded: 0,
     homepageRefillFailure: null,
+    homepageInitialBatches: 0,
     homepageBatchRequests: 0,
     homepageBatchResponses: 0,
     homepageBatchItems: 0,
@@ -472,7 +473,7 @@
     };
   }
 
-  async function buildHomepagePageResponse(response, requestInput, requestInit) {
+  async function buildHomepagePageResponse(response, requestInput, requestInit, { publishInitial = false } = {}) {
     if (!response.ok || !runtime.enabled || runtime.homepagePagedMode === false) return response;
     try {
       const json = await response.clone().json();
@@ -529,6 +530,13 @@
       }
       const videos = collected.slice(0, HOMEPAGE_PAGE_SIZE);
       first.payload.data.item = videos;
+      if (publishInitial && currentPageKey() === 'https://www.bilibili.com/') {
+        diagnostic.homepageInitialBatches += 1;
+        post('homepage-initial-batch', {
+          routeKey: currentPageKey(),
+          items: videos.map(projectHomepageVideo),
+        });
+      }
       diagnostic.uploaderResponsesSeen += 1;
       diagnostic.uploaderItemsDropped += uploaderDropped;
       diagnostic.adItemsDropped += adsDropped + nonVideoDropped;
@@ -629,7 +637,7 @@
       if (!runtime.enabled || runtime.homepagePagedMode === false) return nativeFetch(...args);
       return waitForInitialRules().then(() => {
         const expanded = expandHomepageRequest(args[0], args[1]);
-        return nativeFetch(...expanded).then((response) => buildHomepagePageResponse(response, expanded[0], expanded[1]));
+        return nativeFetch(...expanded).then((response) => buildHomepagePageResponse(response, expanded[0], expanded[1], { publishInitial: true }));
       });
     }
     if (jsonKind) {

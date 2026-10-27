@@ -94,6 +94,9 @@ if (!interactionSource.includes('suppressHomepageNativeGridItems') || !interacti
 if (!interactionSource.includes('ensureHomepageLoadingCards') || !interactionSource.includes('data-pbp-home-initial-loading') || !interactionSource.includes('initialBatchAttempted')) {
   throw new Error('homepage atomic initial batch loading is missing');
 }
+if (!pageMainSource.includes('homepage-initial-batch') || !interactionSource.includes('takeHomepageInitialBatch') || !interactionSource.includes('if (!event.isTrusted) return;')) {
+  throw new Error('homepage single-source initial batch handoff is missing');
+}
 if (!pageMainSource.includes('homepage-batch-result') || !pageMainSource.includes('homepageBatchRequests')) {
   throw new Error('homepage managed refresh bridge is missing');
 }
