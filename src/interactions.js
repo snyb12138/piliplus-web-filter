@@ -149,6 +149,7 @@
   let uiRoot;
   let toastTimer;
   let commentSidePanel;
+  let commentSidePanelSignature = '';
 
   function createElement(tag, className, text) {
     const element = document.createElement(tag);
@@ -1112,18 +1113,10 @@
     if (!isVideoPageLocation()) {
       commentSidePanel?.remove();
       commentSidePanel = null;
+      commentSidePanelSignature = '';
       updateCommentScoringStatus();
       return;
     }
-    const root = ensureUi();
-    const blockedOpen = commentSidePanel?.querySelector('[data-pbp-side-blocked]')?.open === true;
-    const pendingOpen = commentSidePanel?.querySelector('[data-pbp-side-pending]')?.open === true;
-    if (!commentSidePanel?.isConnected) {
-      commentSidePanel = createElement('aside', 'comment-side');
-      commentSidePanel.setAttribute('aria-label', '评论净化名单');
-      root.append(commentSidePanel);
-    }
-    commentSidePanel.replaceChildren();
     const mutedUsers = Api.getConfig().mutedUsers || [];
     const mutedMids = new Set(mutedUsers.map((user) => Number(user.mid)));
     const autoHiddenGroups = new Map();
@@ -1136,6 +1129,30 @@
       }
       group.entries.push(entry);
     }
+    const pendingEntries = [...pendingCommentAccounts.values()];
+    const signature = JSON.stringify({
+      muted: mutedUsers.map((user) => [Number(user.mid), String(user.name || '')]),
+      hidden: [...autoHiddenGroups.values()]
+        .map((group) => [group.mid, group.name, group.entries.length])
+        .sort((left, right) => left[0] - right[0]),
+      pending: pendingEntries
+        .map((candidate) => [candidate.mid, candidate.name, candidate.comments.size, [...candidate.reasons].sort()])
+        .sort((left, right) => left[0] - right[0]),
+    });
+    if (commentSidePanel?.isConnected && signature === commentSidePanelSignature) {
+      Api.record('commentPanelRenderSkips');
+      updateCommentScoringStatus();
+      return;
+    }
+    const root = ensureUi();
+    const blockedOpen = commentSidePanel?.querySelector('[data-pbp-side-blocked]')?.open === true;
+    const pendingOpen = commentSidePanel?.querySelector('[data-pbp-side-pending]')?.open === true;
+    if (!commentSidePanel?.isConnected) {
+      commentSidePanel = createElement('aside', 'comment-side');
+      commentSidePanel.setAttribute('aria-label', '评论净化名单');
+      root.append(commentSidePanel);
+    }
+    commentSidePanel.replaceChildren();
     const blocked = sidePanelDetails('已屏蔽', mutedUsers.length + autoHiddenGroups.size, blockedOpen);
     blocked.details.dataset.pbpSideBlocked = '1';
     if (!mutedUsers.length && !autoHiddenGroups.size) blocked.list.append(createElement('div', 'side-empty', '暂无已隐藏评论或屏蔽账号'));
@@ -1173,7 +1190,6 @@
       blocked.list.append(row.item);
     }
 
-    const pendingEntries = [...pendingCommentAccounts.values()];
     const pending = sidePanelDetails('待屏蔽', pendingEntries.length, pendingOpen);
     pending.details.dataset.pbpSidePending = '1';
     if (!pendingEntries.length) pending.list.append(createElement('div', 'side-empty', '暂无短评论、纯表情或多重纯 @ 候选'));
@@ -1208,6 +1224,8 @@
     }
     if (pendingEntries.length > 100) pending.list.append(createElement('div', 'side-more', `另有 ${pendingEntries.length - 100} 个当前页面候选`));
     commentSidePanel.append(blocked.details, pending.details);
+    commentSidePanelSignature = signature;
+    Api.record('commentPanelRenders');
     updateCommentScoringStatus();
   }
 
@@ -1254,6 +1272,7 @@
     commentScoringCurrent = { scored: 0, pureMention: 0, shortComments: 0, emoteOnly: 0, pendingComments: 0 };
     commentSidePanel?.remove();
     commentSidePanel = null;
+    commentSidePanelSignature = '';
     if (routeReset) {
       commentHideStats.routeResets += 1;
       commentScoringStats.routeResets += 1;
@@ -1463,11 +1482,13 @@
       if (root instanceof ShadowRoot && root.host.matches('[data-pbp-comment-rpid]')) elements.push(root.host);
       elements.push(...root.querySelectorAll('[data-pbp-comment-rpid]'));
     } catch (_) {
-      return;
+      return false;
     }
+    let changed = false;
     for (const element of elements) {
-      Api.registerCommentElement(element.getAttribute('data-pbp-comment-rpid'), element);
+      if (Api.registerCommentElement(element.getAttribute('data-pbp-comment-rpid'), element)) changed = true;
     }
+    return changed;
   }
 
   function rootContainsCommentHost(root) {
@@ -1481,14 +1502,14 @@
   }
 
   function scanCommentRoot(root) {
-    registerCommentCatalogElements(root);
+    let bindingsChanged = registerCommentCatalogElements(root);
     const containsCommentHost = rootContainsCommentHost(root);
     let anchors;
     try {
       anchors = root instanceof Element && root.matches('a[href*="space.bilibili.com/"]') ? [root] : [];
       anchors.push(...root.querySelectorAll('a[href*="space.bilibili.com/"]'));
     } catch (_) {
-      return containsCommentHost;
+      return { containsCommentHost, bindingsChanged };
     }
     const grouped = new Map();
     for (const anchor of anchors) {
@@ -1515,6 +1536,8 @@
     for (const [container, candidate] of grouped) {
       const existing = commentByContainer.get(container);
       if (existing?.button.isConnected) {
+        if (existing.mid !== candidate.mid || existing.rpid !== candidate.rpid || existing.renderer !== candidate.renderer ||
+            (candidate.name && existing.name !== candidate.name)) bindingsChanged = true;
         existing.mid = candidate.mid;
         existing.rpid = candidate.rpid;
         existing.renderer = candidate.renderer;
@@ -1539,12 +1562,13 @@
       candidate.anchor.insertAdjacentElement('afterend', button);
       commentByContainer.set(container, record);
       commentRecords.add(record);
+      bindingsChanged = true;
       Api.record('commentButtons');
       if (container.matches('bili-comment-reply-renderer,.sub-reply-item,[data-parent-id],[data-parent-rpid]')) {
         Api.record('commentReplyButtons');
       }
     }
-    return containsCommentHost;
+    return { containsCommentHost, bindingsChanged };
   }
 
   function restoreUploaderCard(container) {
@@ -1747,13 +1771,16 @@
     Api.record('commentScanBatches');
     Api.record('commentRootsScanned', roots.length);
     let sawCommentHost = false;
+    let commentBindingsChanged = false;
     for (const root of roots) {
-      if (scanCommentRoot(root)) sawCommentHost = true;
+      const commentScan = scanCommentRoot(root);
+      if (commentScan.containsCommentHost) sawCommentHost = true;
+      if (commentScan.bindingsChanged) commentBindingsChanged = true;
       scanUploaderRoot(root);
       scanAdRoot(root);
     }
     if (sawCommentHost) Api.requestCommentCatalog('dom-scan');
-    applyMutedComments();
+    if (commentBindingsChanged) scheduleCommentApply(false);
     applyLayoutPreferences();
   }
 
@@ -1824,7 +1851,7 @@
       if (area === 'local' && changes.purifyConfig) {
         setTimeout(() => {
           scheduleContentScan(document);
-          applyMutedComments();
+          scheduleCommentApply(false);
           applyBlockedUploaders();
           applyLayoutPreferences();
           refreshDomAds();
@@ -1833,7 +1860,7 @@
     });
     window.addEventListener('pbp-config-changed', () => {
       applyLayoutPreferences();
-      applyMutedComments();
+      scheduleCommentApply(false);
       applyBlockedUploaders();
       refreshDomAds();
     });

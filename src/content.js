@@ -105,6 +105,8 @@
       commentRootsScanned: 0,
       commentApplyRuns: 0,
       commentApplyCoalesced: 0,
+      commentPanelRenders: 0,
+      commentPanelRenderSkips: 0,
       uploaderButtons: 0,
       uploaderUsersBlocked: 0,
       uploaderCardsHidden: 0,
@@ -316,6 +318,7 @@
     status.commentCatalog.pruned = Math.max(status.commentCatalog.pruned, Number(packet.meta?.pruned) || 0);
     status.commentCatalog.failure = null;
     const acceptedRpids = [];
+    const changedRpids = [];
     for (const item of Array.isArray(packet.items) ? packet.items : []) {
       const rpid = typeof item?.rpid === 'string' && /^\d+$/u.test(item.rpid) ? item.rpid : null;
       const mid = typeof item?.mid === 'string' && /^\d+$/u.test(item.mid) ? item.mid : null;
@@ -344,7 +347,22 @@
         like: Math.max(0, Number(item.like) || 0),
         isReply: item.isReply === true,
       });
-      commentsByRpid.set(rpid, comment);
+      const sameMentions = previous?.mentions?.length === comment.mentions.length &&
+        comment.mentions.every((mention, index) => {
+          const old = previous.mentions[index];
+          return old?.mid === mention.mid && old?.name === mention.name;
+        });
+      const sameEmotes = previous?.emotes?.length === comment.emotes.length &&
+        comment.emotes.every((token, index) => previous.emotes[index] === token);
+      const unchanged = previous &&
+        previous.root === comment.root && previous.mid === comment.mid &&
+        previous.uname === comment.uname && previous.avatar === comment.avatar &&
+        previous.sign === comment.sign && previous.level === comment.level &&
+        previous.verify === comment.verify && previous.vip === comment.vip &&
+        previous.text === comment.text && sameMentions && sameEmotes &&
+        previous.pictureCount === comment.pictureCount && previous.ctime === comment.ctime &&
+        previous.like === comment.like && previous.isReply === comment.isReply;
+      commentsByRpid.set(rpid, unchanged ? previous : comment);
       let account = accountsByMid.get(mid);
       if (!account) {
         account = { mid, name: comment.uname, rpids: new Set() };
@@ -354,12 +372,13 @@
       }
       account.rpids.add(rpid);
       acceptedRpids.push(rpid);
+      if (!unchanged) changedRpids.push(rpid);
     }
     status.commentCatalog.itemsReceived += acceptedRpids.length;
     status.commentCatalog.lastUpdatedAt = new Date().toISOString();
     updateCommentCatalogStatus();
-    if (acceptedRpids.length && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
-      window.dispatchEvent(new CustomEvent('pbp-comment-catalog-updated', { detail: { rpids: acceptedRpids } }));
+    if (changedRpids.length && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('pbp-comment-catalog-updated', { detail: { rpids: changedRpids } }));
     }
   }
 
@@ -379,6 +398,7 @@
     const normalized = String(rpid || '').trim();
     if (!/^\d+$/u.test(normalized) || !(element instanceof Element)) return false;
     ensureCommentCatalogRoute();
+    if (elementsByRpid.get(normalized) === element) return false;
     elementsByRpid.set(normalized, element);
     updateCommentCatalogStatus();
     return true;

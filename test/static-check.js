@@ -109,6 +109,9 @@ if (!interactionSource.includes('pendingCommentAccounts') || !interactionSource.
 if (!interactionSource.includes('commentApplyRunning') || !interactionSource.includes('commentApplyCoalesced') || !interactionSource.includes('scheduleCommentApply(true)')) {
   throw new Error('comment scoring batch coalescing is missing');
 }
+if (!interactionSource.includes('commentSidePanelSignature') || !interactionSource.includes('commentPanelRenderSkips') || !interactionSource.includes('if (commentBindingsChanged) scheduleCommentApply(false)')) {
+  throw new Error('stable comment side panel rendering is missing');
+}
 const contentSource = fs.readFileSync(path.join(root, 'src/content.js'), 'utf8');
 if (!contentSource.includes('commentsByRpid') || !contentSource.includes('accountsByMid') || !contentSource.includes('elementsByRpid') || !contentSource.includes('getMountedCommentRpidsByMid')) {
   throw new Error('isolated-world comment indexes are missing');
