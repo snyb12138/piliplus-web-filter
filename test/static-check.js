@@ -100,10 +100,10 @@ if (!pageMainSource.includes('request-comment-catalog') || !pageMainSource.inclu
 if (!interactionSource.includes('pbp-comment-catalog-updated') || !interactionSource.includes('visible-fallback') || !interactionSource.includes('resetCommentCatalogForRoute')) {
   throw new Error('incremental comment catalog lifecycle is missing');
 }
-if (!interactionSource.includes('revealedRpids') || !interactionSource.includes('data-pbp-comment-placeholder') || !interactionSource.includes('显示一次') || !interactionSource.includes('cleanupCommentPlaceholders')) {
-  throw new Error('recoverable comment folding lifecycle is missing');
+if (!interactionSource.includes('hiddenComments') || !interactionSource.includes('restoreHiddenComment') || !interactionSource.includes('revealCommentsForMid') || interactionSource.includes('data-pbp-comment-placeholder')) {
+  throw new Error('non-intrusive comment hiding lifecycle is missing');
 }
-if (!interactionSource.includes('pendingCommentAccounts') || !interactionSource.includes('data-pbp-side-pending') || !interactionSource.includes('纯 @ 评论')) {
+if (!interactionSource.includes('pendingCommentAccounts') || !interactionSource.includes('data-pbp-side-pending') || !interactionSource.includes('短评论、纯表情或多重纯 @')) {
   throw new Error('conservative pure-mention review UI is missing');
 }
 const contentSource = fs.readFileSync(path.join(root, 'src/content.js'), 'utf8');

@@ -243,6 +243,10 @@
       if (!parsedMid) continue;
       mentions.push({ mid: parsedMid, name: String(name || '').trim() });
     }
+    const emotes = content.emote && typeof content.emote === 'object' && !Array.isArray(content.emote)
+      ? Object.keys(content.emote).map((token) => String(token || '').trim()).filter(Boolean)
+      : [];
+    const pictureCount = Array.isArray(content.pictures) ? content.pictures.length : 0;
     const root = decimalId(raw.root_str ?? raw.root, true) || '0';
     const officialType = Number(member.official_verify?.type);
     return {
@@ -257,6 +261,8 @@
       vip: Math.max(0, Number(member.vip?.vipStatus ?? member.vip?.status) || 0),
       text: String(content.message ?? raw.message ?? ''),
       mentions,
+      emotes,
+      pictureCount,
       ctime: Math.max(0, Number(raw.ctime) || 0),
       like: Math.max(0, Number(raw.like) || 0),
       isReply: isReply === true,

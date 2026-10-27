@@ -49,9 +49,9 @@
     const catalog = status.commentCatalog || {};
     elements.commentCatalogSummary.textContent = `评论目录：${catalog.comments || 0} 条（主评论 ${catalog.mainComments || 0} / 回复 ${catalog.replies || 0}） · ${catalog.accounts || 0} 个账号 · 已挂载 ${catalog.mountedElements || 0} · 待重试 ${catalog.pending || 0}`;
     const fold = status.commentFold || {};
-    elements.commentFoldSummary.textContent = `评论折叠：占位 ${fold.activePlaceholders || 0} · 显示一次 ${fold.revealedRpids || 0} · 重建 ${fold.rebuilt || 0} · 孤立清理 ${fold.orphaned || 0}`;
+    elements.commentFoldSummary.textContent = `评论隐藏：当前 ${fold.activeHidden || 0} · 右侧恢复 ${fold.revealedRpids || 0} · 累计隐藏 ${fold.hidden || 0} · 累计恢复 ${fold.restored || 0}`;
     const scoring = status.commentScoring || {};
-    elements.commentScoringSummary.textContent = `保守评分：已分析 ${scoring.scored || 0} · 纯@ ${scoring.pureMention || 0} · 自动隐藏 ${scoring.autoHidden || 0} · 待屏蔽 ${scoring.pendingComments || 0} 条/${scoring.pendingAccounts || 0} 人`;
+    elements.commentScoringSummary.textContent = `保守评分：已分析 ${scoring.scored || 0} · 纯@ ${scoring.pureMention || 0} · 短评论 ${scoring.shortComments || 0} · 纯表情 ${scoring.emoteOnly || 0} · 自动隐藏 ${scoring.autoHidden || 0} · 待屏蔽 ${scoring.pendingComments || 0} 条/${scoring.pendingAccounts || 0} 人`;
     const layout = status.layout || {};
     const compacted = Number(layout.emptySlotsHidden) || 0;
     const compactedText = compacted ? ` · 已回收 ${compacted} 个空槽` : '';

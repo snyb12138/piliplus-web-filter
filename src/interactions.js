@@ -104,15 +104,13 @@
   const observedListContainers = new WeakSet();
   const commentByContainer = new WeakMap();
   const commentRecords = new Set();
-  const commentPlaceholders = new Map();
+  const hiddenComments = new Map();
   const revealedRpids = new Set();
   const pendingCommentAccounts = new Map();
   const dismissedCandidateMids = new Set();
-  const commentFoldStats = {
-    created: 0,
-    removed: 0,
-    rebuilt: 0,
-    orphaned: 0,
+  const commentHideStats = {
+    hidden: 0,
+    restored: 0,
     routeResets: 0,
   };
   const commentScoringStats = {
@@ -121,6 +119,8 @@
   let commentScoringCurrent = {
     scored: 0,
     pureMention: 0,
+    shortComments: 0,
+    emoteOnly: 0,
     pendingComments: 0,
   };
   const uploaderByContainer = new WeakMap();
@@ -1091,8 +1091,8 @@
 
   function updateCommentScoringStatus() {
     let autoHidden = 0;
-    for (const entry of commentPlaceholders.values()) {
-      if (entry.kind === 'pureMention' && entry.placeholder?.isConnected) autoHidden += 1;
+    for (const entry of hiddenComments.values()) {
+      if (entry.kind === 'pureMention' && entry.renderer?.isConnected) autoHidden += 1;
     }
     Api.setCommentScoringStatus({
       ...commentScoringCurrent,
@@ -1102,17 +1102,6 @@
       panelMounted: commentSidePanel?.isConnected === true,
       ...commentScoringStats,
     });
-  }
-
-  function revealPendingComment(candidate) {
-    const entry = [...candidate.comments.values()].find((comment) => commentPlaceholders.get(comment.rpid)?.renderer?.isConnected);
-    if (!entry) return showToast('这条评论当前未挂载');
-    revealedRpids.add(entry.rpid);
-    const renderer = commentPlaceholders.get(entry.rpid)?.renderer;
-    removeCommentPlaceholder(entry.rpid, { restore: true });
-    renderer?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-    updateCommentFoldStatus();
-    updateCommentScoringStatus();
   }
 
   function renderCommentSidePanel() {
@@ -1132,38 +1121,61 @@
     }
     commentSidePanel.replaceChildren();
     const mutedUsers = Api.getConfig().mutedUsers || [];
-    const blocked = sidePanelDetails('已屏蔽', mutedUsers.length, blockedOpen);
+    const mutedMids = new Set(mutedUsers.map((user) => Number(user.mid)));
+    const autoHiddenGroups = new Map();
+    for (const entry of hiddenComments.values()) {
+      if (entry.kind !== 'pureMention' || !entry.renderer?.isConnected || mutedMids.has(entry.mid)) continue;
+      let group = autoHiddenGroups.get(entry.mid);
+      if (!group) {
+        group = { mid: entry.mid, name: entry.name, entries: [] };
+        autoHiddenGroups.set(entry.mid, group);
+      }
+      group.entries.push(entry);
+    }
+    const blocked = sidePanelDetails('已屏蔽', mutedUsers.length + autoHiddenGroups.size, blockedOpen);
     blocked.details.dataset.pbpSideBlocked = '1';
-    if (!mutedUsers.length) blocked.list.append(createElement('div', 'side-empty', '暂无持久屏蔽账号'));
+    if (!mutedUsers.length && !autoHiddenGroups.size) blocked.list.append(createElement('div', 'side-empty', '暂无已隐藏评论或屏蔽账号'));
     for (const user of mutedUsers.slice(0, 100)) {
       const mid = Number(user.mid);
-      const row = sidePanelItem(user.name || `UID ${mid}`, `UID ${mid}`);
-      const remove = createElement('button', '', '移除');
-      remove.type = 'button';
-      remove.addEventListener('click', async (event) => {
+      const row = sidePanelItem(user.name || `UID ${mid}`, `账号屏蔽 · UID ${mid}`);
+      const restore = createElement('button', '', '恢复');
+      restore.type = 'button';
+      restore.addEventListener('click', async (event) => {
         event.stopPropagation();
+        revealCommentsForMid(mid);
         await Api.removeMutedUser(mid);
         applyMutedComments();
-        showToast('已从评论屏蔽名单移除');
+        showToast('已恢复该账号在本页的评论，并移出屏蔽名单');
       });
-      row.actions.append(remove);
+      row.actions.append(restore);
       blocked.list.append(row.item);
     }
     if (mutedUsers.length > 100) blocked.list.append(createElement('div', 'side-more', `另有 ${mutedUsers.length - 100} 个账号，请在扩展设置中管理`));
+    for (const group of [...autoHiddenGroups.values()].slice(0, Math.max(0, 100 - mutedUsers.length))) {
+      const row = sidePanelItem(group.name || `UID ${group.mid}`, `自动隐藏 ${group.entries.length} 条纯 @ 评论 · UID ${group.mid}`);
+      const restore = createElement('button', '', '恢复');
+      restore.type = 'button';
+      restore.addEventListener('click', (event) => {
+        event.stopPropagation();
+        for (const entry of group.entries) {
+          revealedRpids.add(entry.rpid);
+          restoreHiddenComment(entry.rpid);
+        }
+        updateCommentFoldStatus();
+        renderCommentSidePanel();
+        showToast(`已恢复 ${group.entries.length} 条评论`);
+      });
+      row.actions.append(restore);
+      blocked.list.append(row.item);
+    }
 
     const pendingEntries = [...pendingCommentAccounts.values()];
     const pending = sidePanelDetails('待屏蔽', pendingEntries.length, pendingOpen);
     pending.details.dataset.pbpSidePending = '1';
-    if (!pendingEntries.length) pending.list.append(createElement('div', 'side-empty', '暂无多重纯 @ 候选'));
+    if (!pendingEntries.length) pending.list.append(createElement('div', 'side-empty', '暂无短评论、纯表情或多重纯 @ 候选'));
     for (const candidate of pendingEntries.slice(0, 100)) {
-      const counts = [...candidate.comments.values()].map((comment) => comment.mentionCount);
-      const row = sidePanelItem(candidate.name || `UID ${candidate.mid}`, `${candidate.comments.size} 条评论 · 最多 ${Math.max(...counts)} 次 @ · UID ${candidate.mid}`);
-      const show = createElement('button', '', '显示');
-      show.type = 'button';
-      show.addEventListener('click', (event) => {
-        event.stopPropagation();
-        revealPendingComment(candidate);
-      });
+      const reasons = [...candidate.reasons].join('、');
+      const row = sidePanelItem(candidate.name || `UID ${candidate.mid}`, `${candidate.comments.size} 条候选 · ${reasons} · UID ${candidate.mid}`);
       const ignore = createElement('button', '', '忽略');
       ignore.type = 'button';
       ignore.addEventListener('click', (event) => {
@@ -1187,7 +1199,7 @@
           applyMutedComments();
         });
       });
-      row.actions.append(show, ignore, block);
+      row.actions.append(ignore, block);
       pending.list.append(row.item);
     }
     if (pendingEntries.length > 100) pending.list.append(createElement('div', 'side-more', `另有 ${pendingEntries.length - 100} 个当前页面候选`));
@@ -1205,14 +1217,12 @@
   }
 
   function updateCommentFoldStatus() {
-    let activePlaceholders = 0;
-    for (const entry of commentPlaceholders.values()) {
-      if (entry.placeholder?.isConnected) activePlaceholders += 1;
-    }
+    let activeHidden = 0;
+    for (const entry of hiddenComments.values()) if (entry.renderer?.isConnected) activeHidden += 1;
     Api.setCommentFoldStatus({
-      activePlaceholders,
+      activeHidden,
       revealedRpids: revealedRpids.size,
-      ...commentFoldStats,
+      ...commentHideStats,
     });
   }
 
@@ -1221,126 +1231,71 @@
     return record.container;
   }
 
-  function removeCommentPlaceholder(rpid, { restore = true, orphaned = false } = {}) {
+  function restoreHiddenComment(rpid) {
     const key = String(rpid || '');
-    const entry = commentPlaceholders.get(key);
+    const entry = hiddenComments.get(key);
     if (!entry) return false;
-    commentPlaceholders.delete(key);
-    if (entry.placeholder?.isConnected) entry.placeholder.remove();
-    if (restore && entry.renderer instanceof Element) restoreCommentContainer(entry.renderer);
-    commentFoldStats.removed += 1;
-    if (orphaned) commentFoldStats.orphaned += 1;
+    hiddenComments.delete(key);
+    if (entry.renderer instanceof Element) restoreCommentContainer(entry.renderer);
+    commentHideStats.restored += 1;
     return true;
   }
 
   function clearCommentFoldState(routeReset = false) {
-    for (const rpid of [...commentPlaceholders.keys()]) {
-      removeCommentPlaceholder(rpid, { restore: true, orphaned: true });
-    }
-    cleanupCommentPlaceholders();
+    for (const rpid of [...hiddenComments.keys()]) restoreHiddenComment(rpid);
+    cleanupHiddenComments();
     revealedRpids.clear();
     pendingCommentAccounts.clear();
     dismissedCandidateMids.clear();
-    commentScoringCurrent = { scored: 0, pureMention: 0, pendingComments: 0 };
+    commentScoringCurrent = { scored: 0, pureMention: 0, shortComments: 0, emoteOnly: 0, pendingComments: 0 };
     commentSidePanel?.remove();
     commentSidePanel = null;
     if (routeReset) {
-      commentFoldStats.routeResets += 1;
+      commentHideStats.routeResets += 1;
       commentScoringStats.routeResets += 1;
     }
     updateCommentFoldStatus();
     updateCommentScoringStatus();
   }
 
-  function cleanupCommentPlaceholders() {
-    for (const [rpid, entry] of [...commentPlaceholders]) {
-      const rendererConnected = entry.renderer?.isConnected === true;
-      const placeholderConnected = entry.placeholder?.isConnected === true;
-      const sameParent = rendererConnected && placeholderConnected && entry.renderer.parentNode === entry.placeholder.parentNode;
-      if (rendererConnected && placeholderConnected && sameParent) continue;
-      commentPlaceholders.delete(rpid);
-      if (placeholderConnected) entry.placeholder.remove();
-      if (rendererConnected) restoreCommentContainer(entry.renderer);
-      commentFoldStats.removed += 1;
-      commentFoldStats.orphaned += 1;
-    }
-    for (const root of observedRoots) {
-      let placeholders = [];
-      try {
-        placeholders = [...root.querySelectorAll('[data-pbp-comment-placeholder]')];
-      } catch (_) {
-        continue;
-      }
-      for (const placeholder of placeholders) {
-        const rpid = placeholder.getAttribute('data-pbp-comment-placeholder') || '';
-        const entry = commentPlaceholders.get(rpid);
-        if (entry?.placeholder === placeholder && entry.renderer?.isConnected && entry.renderer.parentNode === placeholder.parentNode) continue;
-        placeholder.remove();
-        commentFoldStats.removed += 1;
-        commentFoldStats.orphaned += 1;
-      }
+  function cleanupHiddenComments() {
+    for (const [rpid, entry] of [...hiddenComments]) {
+      if (entry.renderer?.isConnected) continue;
+      hiddenComments.delete(rpid);
     }
   }
 
-  function createCommentPlaceholder(record, renderer, kind = 'muted', labelText = '') {
+  function hideCommentRenderer(record, renderer, kind) {
     const rpid = String(record.rpid || '');
-    if (!/^\d+$/u.test(rpid) || !renderer.parentNode) return false;
-    const previous = commentPlaceholders.get(rpid);
-    const rebuilding = Boolean(previous && (!previous.placeholder?.isConnected || previous.renderer !== renderer));
-    if (previous) removeCommentPlaceholder(rpid, { restore: true, orphaned: rebuilding });
-    const siblings = renderer.parentNode.children ? [...renderer.parentNode.children] : [];
-    for (const sibling of siblings) {
-      if (sibling !== renderer && sibling.getAttribute?.('data-pbp-comment-placeholder') === rpid) {
-        sibling.remove();
-        commentFoldStats.removed += 1;
-        commentFoldStats.orphaned += 1;
-      }
-    }
-    const placeholder = createElement('div', 'pbp-comment-placeholder');
-    placeholder.dataset.pbpCommentPlaceholder = rpid;
-    placeholder.setAttribute('role', 'status');
-    placeholder.style.cssText = [
-      'display:flex', 'align-items:center', 'justify-content:space-between', 'gap:12px',
-      'min-height:42px', 'margin:8px 0', 'padding:8px 12px',
-      'border:1px solid var(--line_regular,#e3e5e7)', 'border-radius:8px',
-      'background:var(--bg1,#fff)', 'color:var(--text2,#61666d)',
-      'font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif',
-    ].join(';');
-    const label = createElement('span', '', labelText || `已折叠来自 ${record.name || `UID ${record.mid}`} 的评论`);
-    const reveal = createElement('button', '', '显示一次');
-    reveal.type = 'button';
-    reveal.dataset.pbpRevealComment = rpid;
-    reveal.style.cssText = [
-      'flex:0 0 auto', 'border:0', 'background:transparent', 'color:#00aeec',
-      'font:600 13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif', 'cursor:pointer', 'padding:4px 2px',
-    ].join(';');
-    reveal.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      revealedRpids.add(rpid);
-      removeCommentPlaceholder(rpid, { restore: true });
-      updateCommentFoldStatus();
-      updateCommentScoringStatus();
-    });
-    placeholder.append(label, reveal);
-    renderer.before(placeholder);
+    if (!(renderer instanceof Element)) return false;
+    const previous = /^\d+$/u.test(rpid) ? hiddenComments.get(rpid) : null;
+    if (previous?.renderer !== renderer && previous?.renderer?.isConnected) restoreCommentContainer(previous.renderer);
     if (renderer.dataset.pbpMutedComment !== '1') {
       renderer.dataset.pbpPreviousDisplay = renderer.style.getPropertyValue('display');
       renderer.dataset.pbpMutedComment = '1';
     }
     renderer.style.setProperty('display', 'none', 'important');
-    commentPlaceholders.set(rpid, { placeholder, renderer, kind });
-    commentFoldStats.created += 1;
-    if (rebuilding) commentFoldStats.rebuilt += 1;
+    if (/^\d+$/u.test(rpid)) {
+      hiddenComments.set(rpid, {
+        rpid,
+        renderer,
+        kind,
+        mid: Number(record.mid),
+        name: String(record.name || ''),
+      });
+      if (!previous) commentHideStats.hidden += 1;
+    }
     return true;
   }
 
   function applyMutedComments() {
     const muted = new Set(Api.getConfig().mutedUsers.map((user) => Number(user.mid)));
-    cleanupCommentPlaceholders();
+    cleanupHiddenComments();
     pendingCommentAccounts.clear();
     const structuredRpids = new Set();
     let pureMention = 0;
+    let shortComments = 0;
+    let emoteOnly = 0;
     let pendingComments = 0;
     const mountedComments = Api.getMountedCommentRecords();
     for (const comment of mountedComments) {
@@ -1351,36 +1306,32 @@
       structuredRpids.add(rpid);
       const analysis = CommentScoring.analyzeComment(comment);
       if (analysis.isPureMention) pureMention += 1;
+      if (analysis.isShort) shortComments += 1;
+      if (analysis.isEmoteOnly) emoteOnly += 1;
       const isMuted = muted.has(mid);
       if (analysis.pendingReview && !isMuted && !dismissedCandidateMids.has(String(mid))) {
         pendingComments += 1;
         let candidate = pendingCommentAccounts.get(String(mid));
         if (!candidate) {
-          candidate = { mid, name: comment.uname || '', comments: new Map() };
+          candidate = { mid, name: comment.uname || '', comments: new Map(), reasons: new Set() };
           pendingCommentAccounts.set(String(mid), candidate);
         } else if (comment.uname) {
           candidate.name = comment.uname;
         }
-        candidate.comments.set(rpid, { rpid, mentionCount: analysis.mentionCount, text: comment.text });
+        for (const reason of analysis.pendingReasons) candidate.reasons.add(reason);
+        candidate.comments.set(rpid, {
+          rpid,
+          mentionCount: analysis.mentionCount,
+          text: comment.text,
+          reasons: analysis.pendingReasons,
+        });
       }
-      const shouldFold = isMuted || analysis.isPureMention;
-      if (shouldFold && !revealedRpids.has(rpid)) {
+      const shouldHide = isMuted || analysis.isPureMention;
+      if (shouldHide && !revealedRpids.has(rpid)) {
         const kind = isMuted ? 'muted' : 'pureMention';
-        const label = isMuted
-          ? `已屏蔽来自 ${comment.uname || `UID ${mid}`} 的评论`
-          : (analysis.pendingReview
-            ? `已隐藏纯 @ 评论（${analysis.mentionCount} 次提及，待确认屏蔽）`
-            : '已隐藏纯 @ 评论');
-        const existing = commentPlaceholders.get(rpid);
-        if (!existing?.placeholder?.isConnected || existing.renderer !== renderer || existing.kind !== kind) {
-          createCommentPlaceholder({ rpid, mid, name: comment.uname }, renderer, kind, label);
-        } else if (renderer.dataset.pbpMutedComment !== '1' || renderer.style.getPropertyValue('display') !== 'none') {
-          renderer.dataset.pbpPreviousDisplay = renderer.style.getPropertyValue('display');
-          renderer.dataset.pbpMutedComment = '1';
-          renderer.style.setProperty('display', 'none', 'important');
-        }
+        hideCommentRenderer({ rpid, mid, name: comment.uname }, renderer, kind);
       } else {
-        removeCommentPlaceholder(rpid, { restore: true });
+        restoreHiddenComment(rpid);
         restoreCommentContainer(renderer);
       }
     }
@@ -1393,32 +1344,23 @@
       if (record.rpid && structuredRpids.has(String(record.rpid))) continue;
       if (muted.has(record.mid)) {
         if (record.rpid && !revealedRpids.has(record.rpid)) {
-          const existing = commentPlaceholders.get(record.rpid);
-          if (!existing?.placeholder?.isConnected || existing.renderer !== renderer || existing.kind !== 'muted') {
-            createCommentPlaceholder(record, renderer, 'muted', `已屏蔽来自 ${record.name || `UID ${record.mid}`} 的评论`);
-          } else if (renderer.dataset.pbpMutedComment !== '1' || renderer.style.getPropertyValue('display') !== 'none') {
-            renderer.dataset.pbpPreviousDisplay = renderer.style.getPropertyValue('display');
-            renderer.dataset.pbpMutedComment = '1';
-            renderer.style.setProperty('display', 'none', 'important');
-          }
+          hideCommentRenderer(record, renderer, 'muted');
         } else if (!record.rpid) {
-          if (renderer.dataset.pbpMutedComment !== '1') {
-            renderer.dataset.pbpPreviousDisplay = renderer.style.getPropertyValue('display');
-            renderer.dataset.pbpMutedComment = '1';
-            renderer.style.setProperty('display', 'none', 'important');
-          }
+          hideCommentRenderer(record, renderer, 'muted');
         } else {
-          removeCommentPlaceholder(record.rpid, { restore: true });
+          restoreHiddenComment(record.rpid);
           restoreCommentContainer(renderer);
         }
       } else {
-        if (record.rpid) removeCommentPlaceholder(record.rpid, { restore: true });
+        if (record.rpid) restoreHiddenComment(record.rpid);
         restoreCommentContainer(renderer);
       }
     }
     commentScoringCurrent = {
       scored: mountedComments.length,
       pureMention,
+      shortComments,
+      emoteOnly,
       pendingComments,
     };
     updateCommentFoldStatus();
@@ -1427,6 +1369,13 @@
 
   function clearRevealedCommentsForMid(mid) {
     for (const rpid of Api.getMountedCommentRpidsByMid(mid)) revealedRpids.delete(rpid);
+  }
+
+  function revealCommentsForMid(mid) {
+    for (const rpid of Api.getMountedCommentRpidsByMid(mid)) {
+      revealedRpids.add(rpid);
+      restoreHiddenComment(rpid);
+    }
   }
 
   async function handleCommentAction(record, event) {
@@ -1445,6 +1394,7 @@
     });
     if (action === 'mute') {
       if (muted) {
+        revealCommentsForMid(record.mid);
         await Api.removeMutedUser(record.mid);
         applyMutedComments();
         showToast('已取消评论屏蔽', async () => {

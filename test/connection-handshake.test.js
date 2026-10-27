@@ -226,21 +226,21 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   assert.equal(await isolated.PiliPlusPurifyContentApi.toggleMarkedUser(33, '标记示例'), true);
   assert.equal(isolated.PiliPlusPurifyContentApi.getConfig().markedUsers[0].mid, 33);
   isolated.PiliPlusPurifyContentApi.setCommentFoldStatus({
-    activePlaceholders: 2,
+    activeHidden: 2,
     revealedRpids: 1,
-    created: 3,
-    removed: 1,
-    rebuilt: 1,
-    orphaned: 0,
+    hidden: 3,
+    restored: 1,
     routeResets: 0,
   });
   assert.deepEqual(
     Object.fromEntries(Object.entries(isolated.PiliPlusPurifyContentApi.getStatusSnapshot().commentFold).filter(([key]) => key !== 'lastAppliedAt')),
-    { activePlaceholders: 2, revealedRpids: 1, created: 3, removed: 1, rebuilt: 1, orphaned: 0, routeResets: 0 },
+    { activeHidden: 2, revealedRpids: 1, hidden: 3, restored: 1, routeResets: 0 },
   );
   isolated.PiliPlusPurifyContentApi.setCommentScoringStatus({
     scored: 12,
     pureMention: 3,
+    shortComments: 4,
+    emoteOnly: 2,
     autoHidden: 2,
     pendingComments: 2,
     pendingAccounts: 1,
@@ -250,7 +250,7 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   });
   assert.deepEqual(
     Object.fromEntries(Object.entries(isolated.PiliPlusPurifyContentApi.getStatusSnapshot().commentScoring).filter(([key]) => key !== 'lastAppliedAt')),
-    { scored: 12, pureMention: 3, autoHidden: 2, pendingComments: 2, pendingAccounts: 1, dismissedAccounts: 0, panelMounted: true, routeResets: 0 },
+    { scored: 12, pureMention: 3, shortComments: 4, emoteOnly: 2, autoHidden: 2, pendingComments: 2, pendingAccounts: 1, dismissedAccounts: 0, panelMounted: true, routeResets: 0 },
   );
 
   const mainComment = new FakeElement('bili-comment-thread-renderer');

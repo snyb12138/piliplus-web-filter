@@ -121,7 +121,12 @@ test('structured comment data keeps identifiers exact and distinguishes replies'
       official_verify: { type: 0 },
       vip: { vipStatus: 1 },
     },
-    content: { message: '主评论', at_name_to_mid: { 被提及者: '9988' } },
+    content: {
+      message: '[doge]主评论',
+      at_name_to_mid: { 被提及者: '9988' },
+      emote: { '[doge]': { url: 'https://example.test/doge.png' } },
+      pictures: [{ img_src: 'https://example.test/comment.jpg' }],
+    },
     ctime: 1700000000,
     like: 42,
   }, false);
@@ -130,6 +135,8 @@ test('structured comment data keeps identifiers exact and distinguishes replies'
   assert.equal(main.root, '0');
   assert.equal(main.isReply, false);
   assert.deepEqual(main.mentions, [{ mid: '9988', name: '被提及者' }]);
+  assert.deepEqual(main.emotes, ['[doge]']);
+  assert.equal(main.pictureCount, 1);
 
   const reply = PageCore.normalizeCommentData({
     rpid: 456,

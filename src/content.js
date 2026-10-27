@@ -138,18 +138,18 @@
       failure: null,
     },
     commentFold: {
-      activePlaceholders: 0,
+      activeHidden: 0,
       revealedRpids: 0,
-      created: 0,
-      removed: 0,
-      rebuilt: 0,
-      orphaned: 0,
+      hidden: 0,
+      restored: 0,
       routeResets: 0,
       lastAppliedAt: null,
     },
     commentScoring: {
       scored: 0,
       pureMention: 0,
+      shortComments: 0,
+      emoteOnly: 0,
       autoHidden: 0,
       pendingComments: 0,
       pendingAccounts: 0,
@@ -334,6 +334,8 @@
         vip: Math.max(0, Number(item.vip) || 0),
         text: String(item.text || ''),
         mentions: Array.isArray(item.mentions) ? item.mentions : [],
+        emotes: Array.isArray(item.emotes) ? item.emotes.map((token) => String(token || '')).filter(Boolean) : [],
+        pictureCount: Math.max(0, Number(item.pictureCount) || 0),
         ctime: Math.max(0, Number(item.ctime) || 0),
         like: Math.max(0, Number(item.like) || 0),
         isReply: item.isReply === true,
@@ -616,12 +618,10 @@
     setCommentFoldStatus(next) {
       if (!next || typeof next !== 'object') return;
       status.commentFold = {
-        activePlaceholders: Math.max(0, Number(next.activePlaceholders) || 0),
+        activeHidden: Math.max(0, Number(next.activeHidden) || 0),
         revealedRpids: Math.max(0, Number(next.revealedRpids) || 0),
-        created: Math.max(0, Number(next.created) || 0),
-        removed: Math.max(0, Number(next.removed) || 0),
-        rebuilt: Math.max(0, Number(next.rebuilt) || 0),
-        orphaned: Math.max(0, Number(next.orphaned) || 0),
+        hidden: Math.max(0, Number(next.hidden) || 0),
+        restored: Math.max(0, Number(next.restored) || 0),
         routeResets: Math.max(0, Number(next.routeResets) || 0),
         lastAppliedAt: new Date().toISOString(),
       };
@@ -631,6 +631,8 @@
       status.commentScoring = {
         scored: Math.max(0, Number(next.scored) || 0),
         pureMention: Math.max(0, Number(next.pureMention) || 0),
+        shortComments: Math.max(0, Number(next.shortComments) || 0),
+        emoteOnly: Math.max(0, Number(next.emoteOnly) || 0),
         autoHidden: Math.max(0, Number(next.autoHidden) || 0),
         pendingComments: Math.max(0, Number(next.pendingComments) || 0),
         pendingAccounts: Math.max(0, Number(next.pendingAccounts) || 0),
