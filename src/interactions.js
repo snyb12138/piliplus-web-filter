@@ -134,6 +134,10 @@
   const FEEDBACK_URL = 'https://github.com/snyb12138/piliplus-web-filter/issues';
   let scanScheduled = false;
   let scanTimer = null;
+  let commentApplyTimer = null;
+  let commentApplyRefreshBindings = false;
+  let commentApplyRunning = false;
+  let commentApplyQueued = false;
   let activeRoute = `${location.origin}${location.pathname}${location.search}`;
   let routeHoldUntil = 0;
   let videoInteractionHoldUntil = 0;
@@ -1289,6 +1293,14 @@
   }
 
   function applyMutedComments() {
+    if (commentApplyRunning) {
+      commentApplyQueued = true;
+      Api.record('commentApplyCoalesced');
+      return;
+    }
+    commentApplyRunning = true;
+    Api.record('commentApplyRuns');
+    try {
     const muted = new Set(Api.getConfig().mutedUsers.map((user) => Number(user.mid)));
     cleanupHiddenComments();
     pendingCommentAccounts.clear();
@@ -1365,6 +1377,26 @@
     };
     updateCommentFoldStatus();
     renderCommentSidePanel();
+    } finally {
+      commentApplyRunning = false;
+      if (commentApplyQueued) {
+        commentApplyQueued = false;
+        scheduleCommentApply(false);
+      }
+    }
+  }
+
+  function scheduleCommentApply(refreshBindings = false) {
+    if (refreshBindings) commentApplyRefreshBindings = true;
+    if (commentApplyTimer !== null) return;
+    commentApplyTimer = setTimeout(() => {
+      commentApplyTimer = null;
+      if (commentApplyRefreshBindings) {
+        commentApplyRefreshBindings = false;
+        for (const root of observedRoots) registerCommentCatalogElements(root);
+      }
+      applyMutedComments();
+    }, INCREMENTAL_SCAN_DELAY_MS);
   }
 
   function clearRevealedCommentsForMid(mid) {
@@ -1450,13 +1482,13 @@
 
   function scanCommentRoot(root) {
     registerCommentCatalogElements(root);
-    if (rootContainsCommentHost(root)) Api.requestCommentCatalog('dom-scan');
+    const containsCommentHost = rootContainsCommentHost(root);
     let anchors;
     try {
       anchors = root instanceof Element && root.matches('a[href*="space.bilibili.com/"]') ? [root] : [];
       anchors.push(...root.querySelectorAll('a[href*="space.bilibili.com/"]'));
     } catch (_) {
-      return;
+      return containsCommentHost;
     }
     const grouped = new Map();
     for (const anchor of anchors) {
@@ -1512,7 +1544,7 @@
         Api.record('commentReplyButtons');
       }
     }
-    applyMutedComments();
+    return containsCommentHost;
   }
 
   function restoreUploaderCard(container) {
@@ -1648,14 +1680,16 @@
     if (container.matches(HOMEPAGE_GRID_SELECTOR) && !isHomepageGrid(container)) return;
     observedListContainers.add(container);
     const observer = new MutationObserver((records) => {
+      let changed = false;
       for (const record of records) {
         for (const node of record.addedNodes) {
           if (!(node instanceof Element)) continue;
+          changed = true;
           discoverShadowRoots(node);
           discoverListContainers(node);
-          scheduleContentScan(node);
         }
       }
+      if (changed) scheduleContentScan(container);
     });
     observer.observe(container, { childList: true });
   }
@@ -1710,11 +1744,16 @@
     }
     const roots = [...pendingRoots];
     pendingRoots.clear();
+    Api.record('commentScanBatches');
+    Api.record('commentRootsScanned', roots.length);
+    let sawCommentHost = false;
     for (const root of roots) {
-      scanCommentRoot(root);
+      if (scanCommentRoot(root)) sawCommentHost = true;
       scanUploaderRoot(root);
       scanAdRoot(root);
     }
+    if (sawCommentHost) Api.requestCommentCatalog('dom-scan');
+    applyMutedComments();
     applyLayoutPreferences();
   }
 
@@ -1736,14 +1775,16 @@
     if (observedRoots.has(root)) return;
     observedRoots.add(root);
     const observer = new MutationObserver((records) => {
+      let changed = false;
       for (const record of records) {
         for (const node of record.addedNodes) {
           if (!(node instanceof Element)) continue;
+          changed = true;
           discoverShadowRoots(node);
           discoverListContainers(node);
-          scheduleContentScan(node);
         }
       }
+      if (changed) scheduleContentScan(root);
     });
     observer.observe(root, { childList: true, subtree: true });
     discoverShadowRoots(root);
@@ -1797,7 +1838,7 @@
       refreshDomAds();
     });
     window.addEventListener('pbp-comment-catalog-updated', () => {
-      for (const root of observedRoots) scheduleContentScan(root);
+      scheduleCommentApply(true);
     });
   }
 

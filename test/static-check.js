@@ -106,6 +106,9 @@ if (!interactionSource.includes('hiddenComments') || !interactionSource.includes
 if (!interactionSource.includes('pendingCommentAccounts') || !interactionSource.includes('data-pbp-side-pending') || !interactionSource.includes('短评论、纯表情或多重纯 @')) {
   throw new Error('conservative pure-mention review UI is missing');
 }
+if (!interactionSource.includes('commentApplyRunning') || !interactionSource.includes('commentApplyCoalesced') || !interactionSource.includes('scheduleCommentApply(true)')) {
+  throw new Error('comment scoring batch coalescing is missing');
+}
 const contentSource = fs.readFileSync(path.join(root, 'src/content.js'), 'utf8');
 if (!contentSource.includes('commentsByRpid') || !contentSource.includes('accountsByMid') || !contentSource.includes('elementsByRpid') || !contentSource.includes('getMountedCommentRpidsByMid')) {
   throw new Error('isolated-world comment indexes are missing');
