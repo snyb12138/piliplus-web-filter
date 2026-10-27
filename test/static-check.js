@@ -97,6 +97,9 @@ if (!interactionSource.includes('ensureHomepageLoadingCards') || !interactionSou
 if (!pageMainSource.includes('homepage-initial-batch') || !interactionSource.includes('takeHomepageInitialBatch') || !interactionSource.includes('if (!event.isTrusted) return;')) {
   throw new Error('homepage single-source initial batch handoff is missing');
 }
+if (!interactionSource.includes('HOMEPAGE_CACHE_KEY') || !interactionSource.includes('applyHomepageReturnBatch') || !interactionSource.includes("homepageInitialBatchSource = 'cache'")) {
+  throw new Error('homepage back-navigation batch restoration is missing');
+}
 if (!pageMainSource.includes('homepage-batch-result') || !pageMainSource.includes('homepageBatchRequests')) {
   throw new Error('homepage managed refresh bridge is missing');
 }

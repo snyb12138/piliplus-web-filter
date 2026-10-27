@@ -121,6 +121,7 @@
       homepageRefreshes: 0,
       homepageRefreshFailures: 0,
       homepageInitialBatchRenders: 0,
+      homepageCachedBatchRenders: 0,
       videoPageInteractionDeferrals: 0,
     },
     compatibility: {

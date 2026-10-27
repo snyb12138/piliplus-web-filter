@@ -131,6 +131,9 @@
   const HOMEPAGE_AUTOFILL_DELAY_MS = 4000;
   const HOMEPAGE_GRID_SLOTS = 24;
   const HOMEPAGE_VIDEO_SLOTS = 22;
+  const HOMEPAGE_CACHE_KEY = 'pbp-homepage-batch-v1';
+  const HOMEPAGE_RETURN_KEY = 'pbp-homepage-return-v1';
+  const HOMEPAGE_CACHE_MAX_AGE_MS = 30 * 60 * 1000;
   const FEEDBACK_URL = 'https://github.com/snyb12138/piliplus-web-filter/issues';
   let scanScheduled = false;
   let scanTimer = null;
@@ -146,6 +149,7 @@
   let homepageAutofillTimer = null;
   let homepageAutofillAttempted = false;
   let homepageInitialBatchSource = null;
+  let homepageReturnCacheChecked = false;
   let homepageRefreshError = null;
   let uiHost;
   let uiRoot;
@@ -777,6 +781,78 @@
     return card;
   }
 
+  function homepageCacheFingerprint() {
+    const config = Api.getConfig();
+    const uploaders = (config.uploaderRules?.users || [])
+      .map((user) => Number(user.mid))
+      .filter(Number.isSafeInteger)
+      .sort((left, right) => left - right);
+    const ads = Api.getAdFilter();
+    return JSON.stringify({
+      uploaders,
+      ads: ads.enabled !== false && ads.homepage !== false,
+      keywords: (ads.keywords || []).map(String).sort(),
+    });
+  }
+
+  function writeHomepageBatchCache(items) {
+    if (!Array.isArray(items) || items.length < HOMEPAGE_VIDEO_SLOTS) return false;
+    try {
+      sessionStorage.setItem(HOMEPAGE_CACHE_KEY, JSON.stringify({
+        savedAt: Date.now(),
+        fingerprint: homepageCacheFingerprint(),
+        items: items.slice(0, HOMEPAGE_GRID_SLOTS),
+      }));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function readHomepageBatchCache() {
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(HOMEPAGE_CACHE_KEY) || 'null');
+      if (!cached || !Array.isArray(cached.items) || cached.items.length < HOMEPAGE_VIDEO_SLOTS ||
+          Date.now() - Number(cached.savedAt || 0) > HOMEPAGE_CACHE_MAX_AGE_MS ||
+          cached.fingerprint !== homepageCacheFingerprint()) {
+        sessionStorage.removeItem(HOMEPAGE_CACHE_KEY);
+        return [];
+      }
+      return cached.items;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function markHomepageReturnPending() {
+    if (!readHomepageBatchCache().length) return false;
+    try {
+      sessionStorage.setItem(HOMEPAGE_RETURN_KEY, '1');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function takeHomepageReturnBatch() {
+    try {
+      if (sessionStorage.getItem(HOMEPAGE_RETURN_KEY) !== '1') return [];
+      sessionStorage.removeItem(HOMEPAGE_RETURN_KEY);
+    } catch (_) {
+      return [];
+    }
+    return readHomepageBatchCache();
+  }
+
+  function clearHomepageBatchCache() {
+    try {
+      sessionStorage.removeItem(HOMEPAGE_CACHE_KEY);
+      sessionStorage.removeItem(HOMEPAGE_RETURN_KEY);
+    } catch (_) {
+      // Session storage can be unavailable in hardened browser profiles.
+    }
+  }
+
   function restoreHomepageNativeCards() {
     for (const item of document.querySelectorAll('[data-pbp-native-hidden="1"]')) {
       item.removeAttribute('data-pbp-native-hidden');
@@ -801,7 +877,7 @@
     return suppressed;
   }
 
-  function renderHomepageBatch(items) {
+  function renderHomepageBatch(items, { cache = true } = {}) {
     const grid = activeHomepageGrid();
     if (!grid) throw new Error('没有找到首页推荐网格');
     const cards = items.slice(0, HOMEPAGE_VIDEO_SLOTS).map(createHomepageVideoCard).filter(Boolean);
@@ -816,6 +892,7 @@
     grid.dataset.pbpCustomBatch = '1';
     delete grid.dataset.pbpHomeInitialGrid;
     document.documentElement.removeAttribute('data-pbp-home-initial-loading');
+    if (cache) writeHomepageBatchCache(items);
     return cards.length;
   }
 
@@ -849,6 +926,19 @@
     renderHomepageBatch(items);
     homepageInitialBatchSource = 'native';
     Api.record('homepageInitialBatchRenders');
+    return true;
+  }
+
+  function applyHomepageReturnBatch(grid) {
+    if (homepageReturnCacheChecked || !(grid instanceof Element)) return false;
+    homepageReturnCacheChecked = true;
+    const items = takeHomepageReturnBatch();
+    if (!items.length || grid.querySelector(':scope > .pbp-home-custom-card')) return false;
+    clearTimeout(homepageAutofillTimer);
+    homepageAutofillTimer = null;
+    renderHomepageBatch(items, { cache: false });
+    homepageInitialBatchSource = 'cache';
+    Api.record('homepageCachedBatchRenders');
     return true;
   }
 
@@ -911,7 +1001,7 @@
     const grids = homepageGrids();
     const activeGrid = enabled ? activeHomepageGrid(grids) : null;
     const statsPanelMounted = ensureHomepageStatsPanel(enabled, activeGrid);
-    if (enabled && activeGrid) applyHomepageInitialBatch(activeGrid);
+    if (enabled && activeGrid && !applyHomepageReturnBatch(activeGrid)) applyHomepageInitialBatch(activeGrid);
     const refreshSettling = enabled && homepageRefreshReloading;
     const customBatchActive = Boolean(enabled && activeGrid?.querySelector(':scope > .pbp-home-custom-card'));
     const nativeSlotsSuppressed = customBatchActive ? suppressHomepageNativeGridItems(activeGrid) : 0;
@@ -1803,6 +1893,7 @@
   function detectRouteChange() {
     const route = currentRoute();
     if (route === activeRoute) return false;
+    const previousRoute = activeRoute;
     activeRoute = route;
     routeHoldUntil = Date.now() + ROUTE_SETTLE_MS;
     videoInteractionHoldUntil = isVideoPageLocation() ? Date.now() + ROUTE_SETTLE_MS : 0;
@@ -1810,6 +1901,15 @@
     homepageAutofillTimer = null;
     homepageAutofillAttempted = false;
     homepageInitialBatchSource = null;
+    homepageReturnCacheChecked = false;
+    try {
+      const previous = new URL(previousRoute);
+      if (previous.hostname === 'www.bilibili.com' && /^(?:\/(?:zh-(?:Hans|CN))?)?\/?$/u.test(previous.pathname) && isVideoPageLocation()) {
+        markHomepageReturnPending();
+      }
+    } catch (_) {
+      // Ignore malformed transient SPA route values.
+    }
     document.documentElement.removeAttribute('data-pbp-home-initial-loading');
     for (const grid of document.querySelectorAll('[data-pbp-home-initial-grid="1"]')) delete grid.dataset.pbpHomeInitialGrid;
     for (const loading of document.querySelectorAll('.pbp-home-loading-card')) loading.remove();
@@ -1896,6 +1996,14 @@
     installDanmakuPointerStyle();
     installLayoutStyle();
     updateCommentFoldStatus();
+    if (isVideoPageLocation()) {
+      try {
+        const referrer = new URL(document.referrer || location.href);
+        if (referrer.hostname === 'www.bilibili.com' && /^(?:\/(?:zh-(?:Hans|CN))?)?\/?$/u.test(referrer.pathname)) markHomepageReturnPending();
+      } catch (_) {
+        // Referrer can be empty or unavailable.
+      }
+    }
     if (isVideoPageLocation()) videoInteractionHoldUntil = Date.now() + ROUTE_SETTLE_MS;
     applyLayoutPreferences();
     document.addEventListener('click', (event) => {
@@ -1918,6 +2026,7 @@
     }, 5_000);
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && changes.purifyConfig) {
+        clearHomepageBatchCache();
         setTimeout(() => {
           scheduleContentScan(document);
           scheduleCommentApply(false);
