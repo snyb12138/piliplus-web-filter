@@ -123,7 +123,7 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   const common = {
     window: windowProxy,
     document,
-    location: { origin: 'https://www.bilibili.com', href: 'https://www.bilibili.com/video/BV1TEST', pathname: '/video/BV1TEST' },
+    location: { origin: 'https://www.bilibili.com', href: 'https://www.bilibili.com/video/BV1TEST', pathname: '/video/BV1TEST', search: '' },
     crypto: webcrypto,
     XMLHttpRequest: FakeXhr,
     MutationObserver: FakeMutationObserver,
@@ -270,14 +270,36 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   assert.equal(catalogStatus.pending, 0);
   assert.ok(catalogStatus.retries >= 1);
 
+  const remountedMainComment = new FakeElement('bili-comment-thread-renderer');
+  remountedMainComment.data = mainComment.data;
   mainComment.isConnected = false;
+  isolated.PiliPlusPurifyContentApi.pruneCommentCatalog();
+  assert.equal(isolated.PiliPlusPurifyContentApi.getStatusSnapshot().commentCatalog.comments, 2);
+  commentRenderers = [remountedMainComment, replyComment, delayedComment];
+  assert.equal(isolated.PiliPlusPurifyContentApi.requestCommentCatalog('remount-test', true), true);
+  assert.equal(isolated.PiliPlusPurifyContentApi.getStatusSnapshot().commentCatalog.comments, 3);
+  isolated.PiliPlusPurifyContentApi.registerCommentElement('900000000000000001', remountedMainComment);
+
+  const resetsBeforeTrackingQuery = isolated.PiliPlusPurifyContentApi.getStatusSnapshot().commentCatalog.routeResets;
+  common.location.search = '?spm_id_from=tracking-only';
+  common.location.href = 'https://www.bilibili.com/video/BV1TEST?spm_id_from=tracking-only';
+  assert.equal(isolated.PiliPlusPurifyContentApi.requestCommentCatalog('query-change-test', true), true);
+  catalogStatus = isolated.PiliPlusPurifyContentApi.getStatusSnapshot().commentCatalog;
+  assert.equal(catalogStatus.comments, 3);
+  assert.equal(catalogStatus.routeResets, resetsBeforeTrackingQuery);
+
+  remountedMainComment.isConnected = false;
   replyComment.isConnected = false;
   delayedComment.isConnected = false;
   commentRenderers = [];
+  const resetsBeforeVideoRoute = isolated.PiliPlusPurifyContentApi.getStatusSnapshot().commentCatalog.routeResets;
   common.location.pathname = '/video/BV2NEXT';
   common.location.href = 'https://www.bilibili.com/video/BV2NEXT';
   isolated.PiliPlusPurifyContentApi.resetCommentCatalogForRoute('https://www.bilibili.com/video/BV2NEXT');
-  assert.equal(isolated.PiliPlusPurifyContentApi.getStatusSnapshot().commentCatalog.comments, 0);
+  assert.equal(isolated.PiliPlusPurifyContentApi.requestCommentCatalog('route-test', true), true);
+  catalogStatus = isolated.PiliPlusPurifyContentApi.getStatusSnapshot().commentCatalog;
+  assert.equal(catalogStatus.comments, 0);
+  assert.equal(catalogStatus.routeResets, resetsBeforeVideoRoute + 1);
 
   const hookedFetch = windowProxy.fetch;
   const messageListenerCount = listeners.length;

@@ -119,7 +119,7 @@
       videoPageAdDomFallback: false,
     },
     commentCatalog: {
-      routeKey: `${location.origin}${location.pathname}${location.search}`,
+      routeKey: `${location.origin}${location.pathname}`,
       comments: 0,
       mainComments: 0,
       replies: 0,
@@ -220,7 +220,7 @@
   }
 
   function currentCommentRoute() {
-    return `${location.origin}${location.pathname}${location.search}`;
+    return `${location.origin}${location.pathname}`;
   }
 
   function updateCommentCatalogStatus() {
@@ -341,7 +341,7 @@
     pruneCommentCatalog();
     if (!token) return false;
     const now = Date.now();
-    if (!force && now - lastCommentCatalogRequestAt < 80) return false;
+    if (!force && now - lastCommentCatalogRequestAt < 300) return false;
     lastCommentCatalogRequestAt = now;
     status.commentCatalog.lastRequestedAt = new Date(now).toISOString();
     post('request-comment-catalog', { reason: String(reason || 'unknown') });
@@ -414,8 +414,11 @@
         else pending.resolve(Array.isArray(packet.items) ? packet.items : []);
       }
     } else if (packet.kind === 'comment-catalog-reset') {
-      if (packet.routeKey === currentCommentRoute()) clearCommentCatalog(packet.routeKey, true);
-      else status.commentCatalog.staleBatches += 1;
+      if (packet.routeKey !== currentCommentRoute()) {
+        status.commentCatalog.staleBatches += 1;
+      } else if (status.commentCatalog.routeKey !== packet.routeKey) {
+        clearCommentCatalog(packet.routeKey, true);
+      }
     } else if (packet.kind === 'comment-catalog') {
       acceptCommentCatalog(packet);
     }

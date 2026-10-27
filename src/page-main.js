@@ -90,9 +90,9 @@
   let homepageBatchSequence = 0;
   const danmakuCatalog = [];
   let catalogPage = `${location.origin}${location.pathname}${location.search}`;
-  let commentCatalogPage = catalogPage;
+  let commentCatalogPage = `${location.origin}${location.pathname}`;
   const commentPending = new Map();
-  const commentFingerprints = new Map();
+  let commentRendererFingerprints = new WeakMap();
 
   function rememberDanmaku(entries) {
     const currentPage = `${location.origin}${location.pathname}${location.search}`;
@@ -159,7 +159,7 @@
   }
 
   function currentPageKey() {
-    return `${location.origin}${location.pathname}${location.search}`;
+    return `${location.origin}${location.pathname}`;
   }
 
   function clearCommentPending() {
@@ -175,7 +175,7 @@
     const routeKey = currentPageKey();
     if (routeKey === commentCatalogPage) return routeKey;
     clearCommentPending();
-    commentFingerprints.clear();
+    commentRendererFingerprints = new WeakMap();
     commentCatalogPage = routeKey;
     diagnostic.commentCatalogRouteResets += 1;
     post('comment-catalog-reset', { routeKey });
@@ -226,8 +226,8 @@
       // The catalog remains useful even when an experimental renderer rejects attributes.
     }
     const fingerprint = commentFingerprint(item);
-    if (commentFingerprints.get(item.rpid) === fingerprint) return null;
-    commentFingerprints.set(item.rpid, fingerprint);
+    if (commentRendererFingerprints.get(renderer) === fingerprint) return null;
+    commentRendererFingerprints.set(renderer, fingerprint);
     if (item.isReply) diagnostic.commentCatalogReplies += 1;
     else diagnostic.commentCatalogMain += 1;
     return item;

@@ -1366,6 +1366,10 @@
     return `${location.origin}${location.pathname}${location.search}`;
   }
 
+  function currentCommentRoute() {
+    return `${location.origin}${location.pathname}`;
+  }
+
   function detectRouteChange() {
     const route = currentRoute();
     if (route === activeRoute) return false;
@@ -1374,7 +1378,7 @@
     videoInteractionHoldUntil = isVideoPageLocation() ? Date.now() + ROUTE_SETTLE_MS : 0;
     pendingRoots.clear();
     pendingRoots.add(document);
-    Api.resetCommentCatalogForRoute(route);
+    Api.resetCommentCatalogForRoute(currentCommentRoute());
     Api.record('routeScanDeferrals');
     return true;
   }
@@ -1462,7 +1466,7 @@
       if (rect && rect.bottom < 0) return;
       if (rect && rect.top > (window.innerHeight || 800) * 2) return;
       Api.requestCommentCatalog('visible-fallback', true);
-    }, 2_000);
+    }, 5_000);
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && changes.purifyConfig) {
         setTimeout(() => {
