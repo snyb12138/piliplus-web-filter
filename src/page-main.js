@@ -42,6 +42,16 @@
     homepageBatchResponses: 0,
     homepageBatchItems: 0,
     homepageBatchFailure: null,
+    commentCatalogRequests: 0,
+    commentCatalogBatches: 0,
+    commentCatalogItems: 0,
+    commentCatalogMain: 0,
+    commentCatalogReplies: 0,
+    commentCatalogPending: 0,
+    commentCatalogRetries: 0,
+    commentCatalogPruned: 0,
+    commentCatalogRouteResets: 0,
+    commentCatalogFailure: null,
     failure: null,
   };
   Object.defineProperty(globalThis, MARKER_NAME, { value: diagnostic, configurable: true });
@@ -74,9 +84,15 @@
   const HOMEPAGE_PAGE_SIZE = 24;
   const HOMEPAGE_UPSTREAM_SIZE = 30;
   const HOMEPAGE_MAX_REFILLS = 2;
+  const COMMENT_HOST_SELECTOR = 'bili-comments, bili-comment-thread-renderer, bili-comment-renderer, bili-comment-replies-renderer, bili-comment-reply-renderer';
+  const COMMENT_RENDERER_SELECTOR = 'bili-comment-thread-renderer, bili-comment-reply-renderer';
+  const COMMENT_RETRY_DELAYS = [60, 250];
   let homepageBatchSequence = 0;
   const danmakuCatalog = [];
   let catalogPage = `${location.origin}${location.pathname}${location.search}`;
+  let commentCatalogPage = catalogPage;
+  const commentPending = new Map();
+  const commentFingerprints = new Map();
 
   function rememberDanmaku(entries) {
     const currentPage = `${location.origin}${location.pathname}${location.search}`;
@@ -140,6 +156,163 @@
 
   function emitDiagnostic(entry) {
     post('diagnostic', { entry });
+  }
+
+  function currentPageKey() {
+    return `${location.origin}${location.pathname}${location.search}`;
+  }
+
+  function clearCommentPending() {
+    for (const entry of commentPending.values()) {
+      if (entry.timer) clearTimeout(entry.timer);
+    }
+    diagnostic.commentCatalogPruned += commentPending.size;
+    commentPending.clear();
+    diagnostic.commentCatalogPending = 0;
+  }
+
+  function syncCommentCatalogRoute() {
+    const routeKey = currentPageKey();
+    if (routeKey === commentCatalogPage) return routeKey;
+    clearCommentPending();
+    commentFingerprints.clear();
+    commentCatalogPage = routeKey;
+    diagnostic.commentCatalogRouteResets += 1;
+    post('comment-catalog-reset', { routeKey });
+    return routeKey;
+  }
+
+  function commentCatalogMeta(reason) {
+    return {
+      reason: String(reason || 'unknown'),
+      pending: commentPending.size,
+      retries: diagnostic.commentCatalogRetries,
+      pruned: diagnostic.commentCatalogPruned,
+      routeResets: diagnostic.commentCatalogRouteResets,
+    };
+  }
+
+  function publishCommentCatalog(items, reason) {
+    diagnostic.commentCatalogBatches += 1;
+    diagnostic.commentCatalogItems += items.length;
+    post('comment-catalog', {
+      routeKey: commentCatalogPage,
+      items,
+      meta: commentCatalogMeta(reason),
+    });
+  }
+
+  function commentFingerprint(item) {
+    return `${item.mid}\u0000${item.root}\u0000${item.isReply ? 1 : 0}\u0000${item.uname}\u0000${item.text}`;
+  }
+
+  function acceptCommentRenderer(renderer, isReply, reason) {
+    let item;
+    try {
+      item = PageCore.normalizeCommentData(renderer?.data, isReply);
+    } catch (error) {
+      diagnostic.commentCatalogFailure = error.message;
+      emitDiagnostic({ level: 'warning', code: 'comment-data-normalize', message: `评论结构化数据读取失败：${error.message}` });
+      return null;
+    }
+    if (!item) return undefined;
+    const pending = commentPending.get(renderer);
+    if (pending?.timer) clearTimeout(pending.timer);
+    commentPending.delete(renderer);
+    diagnostic.commentCatalogPending = commentPending.size;
+    try {
+      renderer.setAttribute('data-pbp-comment-rpid', item.rpid);
+    } catch (_) {
+      // The catalog remains useful even when an experimental renderer rejects attributes.
+    }
+    const fingerprint = commentFingerprint(item);
+    if (commentFingerprints.get(item.rpid) === fingerprint) return null;
+    commentFingerprints.set(item.rpid, fingerprint);
+    if (item.isReply) diagnostic.commentCatalogReplies += 1;
+    else diagnostic.commentCatalogMain += 1;
+    return item;
+  }
+
+  function scheduleCommentRetry(renderer, isReply, attempt, reason) {
+    const existing = commentPending.get(renderer);
+    if (existing?.timer) return;
+    const delay = COMMENT_RETRY_DELAYS[attempt];
+    if (delay === undefined) {
+      commentPending.set(renderer, { isReply, attempt, timer: null, routeKey: commentCatalogPage });
+      diagnostic.commentCatalogPending = commentPending.size;
+      return;
+    }
+    const routeKey = commentCatalogPage;
+    const timer = setTimeout(() => {
+      const pending = commentPending.get(renderer);
+      if (!pending || pending.routeKey !== currentPageKey()) return;
+      pending.timer = null;
+      diagnostic.commentCatalogRetries += 1;
+      if (!renderer?.isConnected) {
+        commentPending.delete(renderer);
+        diagnostic.commentCatalogPruned += 1;
+        diagnostic.commentCatalogPending = commentPending.size;
+        return;
+      }
+      const item = acceptCommentRenderer(renderer, isReply, `retry-${attempt + 1}`);
+      if (item) publishCommentCatalog([item], `retry-${attempt + 1}`);
+      else if (item === undefined) scheduleCommentRetry(renderer, isReply, attempt + 1, reason);
+    }, delay);
+    commentPending.set(renderer, { isReply, attempt, timer, routeKey });
+    diagnostic.commentCatalogPending = commentPending.size;
+  }
+
+  function collectCommentRenderers() {
+    const roots = [document];
+    const visitedRoots = new Set();
+    const renderers = [];
+    const visitedRenderers = new Set();
+    while (roots.length) {
+      const root = roots.shift();
+      if (!root || visitedRoots.has(root)) continue;
+      visitedRoots.add(root);
+      let hosts = [];
+      try {
+        if (root instanceof Element && root.matches(COMMENT_HOST_SELECTOR)) hosts.push(root);
+        hosts.push(...root.querySelectorAll(COMMENT_HOST_SELECTOR));
+      } catch (_) {
+        continue;
+      }
+      for (const host of hosts) {
+        if (host.matches(COMMENT_RENDERER_SELECTOR) && !visitedRenderers.has(host)) {
+          visitedRenderers.add(host);
+          renderers.push(host);
+        }
+        if (host.shadowRoot && !visitedRoots.has(host.shadowRoot)) roots.push(host.shadowRoot);
+      }
+    }
+    return renderers;
+  }
+
+  function scanCommentCatalog(reason = 'request') {
+    diagnostic.commentCatalogRequests += 1;
+    diagnostic.commentCatalogFailure = null;
+    syncCommentCatalogRoute();
+    for (const [renderer, pending] of commentPending) {
+      if (renderer?.isConnected) continue;
+      if (pending.timer) clearTimeout(pending.timer);
+      commentPending.delete(renderer);
+      diagnostic.commentCatalogPruned += 1;
+    }
+    const items = [];
+    try {
+      for (const renderer of collectCommentRenderers()) {
+        const isReply = renderer.localName === 'bili-comment-reply-renderer' || renderer.tagName?.toLowerCase() === 'bili-comment-reply-renderer';
+        const item = acceptCommentRenderer(renderer, isReply, reason);
+        if (item) items.push(item);
+        else if (item === undefined) scheduleCommentRetry(renderer, isReply, 0, reason);
+      }
+    } catch (error) {
+      diagnostic.commentCatalogFailure = error.message;
+      emitDiagnostic({ level: 'warning', code: 'comment-catalog-scan', message: `评论目录扫描失败：${error.message}` });
+    }
+    diagnostic.commentCatalogPending = commentPending.size;
+    publishCommentCatalog(items, reason);
   }
 
   function isDanmakuResponse(input) {
@@ -565,6 +738,8 @@
       });
     } else if (packet.kind === 'request-homepage-batch' && Number.isSafeInteger(packet.id)) {
       requestHomepageBatch(packet.id);
+    } else if (packet.kind === 'request-comment-catalog') {
+      scanCommentCatalog(packet.reason);
     }
   });
 

@@ -49,6 +49,10 @@
   const pendingSenderRequests = new Map();
   const pendingHomepageBatchRequests = new Map();
   const diagnosticLastSeen = new Map();
+  const commentsByRpid = new Map();
+  const accountsByMid = new Map();
+  const elementsByRpid = new Map();
+  let lastCommentCatalogRequestAt = 0;
   const status = {
     connected: false,
     rulesReady: false,
@@ -113,6 +117,25 @@
       videoPageCommentActions: true,
       videoPageUploaderActions: false,
       videoPageAdDomFallback: false,
+    },
+    commentCatalog: {
+      routeKey: `${location.origin}${location.pathname}${location.search}`,
+      comments: 0,
+      mainComments: 0,
+      replies: 0,
+      accounts: 0,
+      mountedElements: 0,
+      pending: 0,
+      batches: 0,
+      itemsReceived: 0,
+      retries: 0,
+      pruned: 0,
+      routeResets: 0,
+      staleBatches: 0,
+      lastReason: null,
+      lastRequestedAt: null,
+      lastUpdatedAt: null,
+      failure: null,
     },
   };
 
@@ -196,6 +219,144 @@
     });
   }
 
+  function currentCommentRoute() {
+    return `${location.origin}${location.pathname}${location.search}`;
+  }
+
+  function updateCommentCatalogStatus() {
+    status.commentCatalog.comments = commentsByRpid.size;
+    status.commentCatalog.mainComments = 0;
+    status.commentCatalog.replies = 0;
+    for (const comment of commentsByRpid.values()) {
+      if (comment.isReply) status.commentCatalog.replies += 1;
+      else status.commentCatalog.mainComments += 1;
+    }
+    status.commentCatalog.accounts = accountsByMid.size;
+    status.commentCatalog.mountedElements = elementsByRpid.size;
+  }
+
+  function removeCommentRecord(rpid) {
+    const existing = commentsByRpid.get(rpid);
+    commentsByRpid.delete(rpid);
+    elementsByRpid.delete(rpid);
+    if (!existing) return;
+    const account = accountsByMid.get(existing.mid);
+    if (!account) return;
+    account.rpids.delete(rpid);
+    if (!account.rpids.size) accountsByMid.delete(existing.mid);
+  }
+
+  function clearCommentCatalog(routeKey, countReset = true) {
+    commentsByRpid.clear();
+    accountsByMid.clear();
+    elementsByRpid.clear();
+    status.commentCatalog.routeKey = routeKey || currentCommentRoute();
+    status.commentCatalog.pending = 0;
+    status.commentCatalog.failure = null;
+    status.commentCatalog.lastUpdatedAt = new Date().toISOString();
+    if (countReset) status.commentCatalog.routeResets += 1;
+    updateCommentCatalogStatus();
+  }
+
+  function ensureCommentCatalogRoute(routeKey = currentCommentRoute()) {
+    if (status.commentCatalog.routeKey === routeKey) return false;
+    clearCommentCatalog(routeKey, true);
+    return true;
+  }
+
+  function pruneCommentCatalog() {
+    ensureCommentCatalogRoute();
+    let pruned = 0;
+    for (const [rpid, element] of elementsByRpid) {
+      if (element?.isConnected) continue;
+      removeCommentRecord(rpid);
+      pruned += 1;
+    }
+    status.commentCatalog.pruned += pruned;
+    updateCommentCatalogStatus();
+    return pruned;
+  }
+
+  function acceptCommentCatalog(packet) {
+    const activeRoute = currentCommentRoute();
+    ensureCommentCatalogRoute(activeRoute);
+    if (packet.routeKey !== activeRoute) {
+      status.commentCatalog.staleBatches += 1;
+      return;
+    }
+    status.commentCatalog.batches += 1;
+    status.commentCatalog.lastReason = typeof packet.meta?.reason === 'string' ? packet.meta.reason : null;
+    status.commentCatalog.pending = Math.max(0, Number(packet.meta?.pending) || 0);
+    status.commentCatalog.retries = Math.max(status.commentCatalog.retries, Number(packet.meta?.retries) || 0);
+    status.commentCatalog.pruned = Math.max(status.commentCatalog.pruned, Number(packet.meta?.pruned) || 0);
+    status.commentCatalog.failure = null;
+    const acceptedRpids = [];
+    for (const item of Array.isArray(packet.items) ? packet.items : []) {
+      const rpid = typeof item?.rpid === 'string' && /^\d+$/u.test(item.rpid) ? item.rpid : null;
+      const mid = typeof item?.mid === 'string' && /^\d+$/u.test(item.mid) ? item.mid : null;
+      if (!rpid || !mid) continue;
+      const previous = commentsByRpid.get(rpid);
+      if (previous && previous.mid !== mid) {
+        const previousAccount = accountsByMid.get(previous.mid);
+        previousAccount?.rpids.delete(rpid);
+        if (previousAccount && !previousAccount.rpids.size) accountsByMid.delete(previous.mid);
+      }
+      const comment = Object.freeze({
+        rpid,
+        root: typeof item.root === 'string' ? item.root : '0',
+        mid,
+        uname: String(item.uname || ''),
+        avatar: String(item.avatar || ''),
+        sign: String(item.sign || ''),
+        level: Math.max(0, Number(item.level) || 0),
+        verify: Number.isFinite(Number(item.verify)) ? Number(item.verify) : -1,
+        vip: Math.max(0, Number(item.vip) || 0),
+        text: String(item.text || ''),
+        mentions: Array.isArray(item.mentions) ? item.mentions : [],
+        ctime: Math.max(0, Number(item.ctime) || 0),
+        like: Math.max(0, Number(item.like) || 0),
+        isReply: item.isReply === true,
+      });
+      commentsByRpid.set(rpid, comment);
+      let account = accountsByMid.get(mid);
+      if (!account) {
+        account = { mid, name: comment.uname, rpids: new Set() };
+        accountsByMid.set(mid, account);
+      } else if (comment.uname) {
+        account.name = comment.uname;
+      }
+      account.rpids.add(rpid);
+      acceptedRpids.push(rpid);
+    }
+    status.commentCatalog.itemsReceived += acceptedRpids.length;
+    status.commentCatalog.lastUpdatedAt = new Date().toISOString();
+    updateCommentCatalogStatus();
+    if (acceptedRpids.length && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('pbp-comment-catalog-updated', { detail: { rpids: acceptedRpids } }));
+    }
+  }
+
+  function requestCommentCatalog(reason = 'dom-mutation', force = false) {
+    ensureCommentCatalogRoute();
+    pruneCommentCatalog();
+    if (!token) return false;
+    const now = Date.now();
+    if (!force && now - lastCommentCatalogRequestAt < 80) return false;
+    lastCommentCatalogRequestAt = now;
+    status.commentCatalog.lastRequestedAt = new Date(now).toISOString();
+    post('request-comment-catalog', { reason: String(reason || 'unknown') });
+    return true;
+  }
+
+  function registerCommentElement(rpid, element) {
+    const normalized = String(rpid || '').trim();
+    if (!/^\d+$/u.test(normalized) || !(element instanceof Element)) return false;
+    ensureCommentCatalogRoute();
+    elementsByRpid.set(normalized, element);
+    updateCommentCatalogStatus();
+    return true;
+  }
+
   function acquireToken(candidate) {
     if (!/^[0-9a-f]{32}$/u.test(candidate || '')) return false;
     if (token === candidate) return true;
@@ -252,6 +413,11 @@
         if (packet.error) pending.reject(new Error(packet.error));
         else pending.resolve(Array.isArray(packet.items) ? packet.items : []);
       }
+    } else if (packet.kind === 'comment-catalog-reset') {
+      if (packet.routeKey === currentCommentRoute()) clearCommentCatalog(packet.routeKey, true);
+      else status.commentCatalog.staleBatches += 1;
+    } else if (packet.kind === 'comment-catalog') {
+      acceptCommentCatalog(packet);
     }
   });
 
@@ -356,9 +522,25 @@
       blocked: status.blocked,
       counts: { ...status.counts },
       interaction: { ...status.interaction },
+      commentCatalog: { ...status.commentCatalog },
     }),
     requestDanmakuSender,
     requestHomepageBatch,
+    requestCommentCatalog,
+    resetCommentCatalogForRoute(routeKey = currentCommentRoute()) {
+      return ensureCommentCatalogRoute(routeKey);
+    },
+    registerCommentElement,
+    pruneCommentCatalog,
+    getCommentCatalogRecord(rpid) {
+      return commentsByRpid.get(String(rpid || '')) || null;
+    },
+    getMountedCommentRpidsByMid(mid) {
+      pruneCommentCatalog();
+      const account = accountsByMid.get(String(mid || ''));
+      if (!account) return [];
+      return [...account.rpids].filter((rpid) => elementsByRpid.get(rpid)?.isConnected);
+    },
     record(name, delta = 1) {
       if (Object.hasOwn(status.interaction, name)) status.interaction[name] += delta;
     },

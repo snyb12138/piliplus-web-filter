@@ -94,6 +94,16 @@ if (!interactionSource.includes('suppressHomepageNativeGridItems') || !interacti
 if (!pageMainSource.includes('homepage-batch-result') || !pageMainSource.includes('homepageBatchRequests')) {
   throw new Error('homepage managed refresh bridge is missing');
 }
+if (!pageMainSource.includes('request-comment-catalog') || !pageMainSource.includes('COMMENT_RETRY_DELAYS = [60, 250]') || !pageMainSource.includes('data-pbp-comment-rpid')) {
+  throw new Error('structured comment catalog and retry queue are missing');
+}
+if (!interactionSource.includes('pbp-comment-catalog-updated') || !interactionSource.includes('visible-fallback') || !interactionSource.includes('resetCommentCatalogForRoute')) {
+  throw new Error('incremental comment catalog lifecycle is missing');
+}
+const contentSource = fs.readFileSync(path.join(root, 'src/content.js'), 'utf8');
+if (!contentSource.includes('commentsByRpid') || !contentSource.includes('accountsByMid') || !contentSource.includes('elementsByRpid') || !contentSource.includes('getMountedCommentRpidsByMid')) {
+  throw new Error('isolated-world comment indexes are missing');
+}
 if (!fs.existsSync(path.join(root, 'config/ad-keywords.json'))) throw new Error('bundled advertising keywords are missing');
 if (!manifest.permissions?.includes('alarms')) throw new Error('advertising rule synchronization requires alarms');
 if (!fs.readFileSync(path.join(root, 'options.html'), 'utf8').includes('id="hideHomepageCarousel"')) {

@@ -43,12 +43,19 @@ function wireVarint(field, value) {
 class FakeElement {
   constructor(tagName = 'div') {
     this.tagName = tagName.toUpperCase();
+    this.localName = tagName.toLowerCase();
     this.dataset = {};
+    this.attributes = new Map();
     this.style = { setProperty() {}, removeProperty() {} };
     this.textContent = '';
+    this.isConnected = true;
   }
-  matches() { return false; }
+  matches(selector) {
+    return String(selector).split(',').some((part) => part.trim().toLowerCase() === this.localName);
+  }
   querySelectorAll() { return []; }
+  setAttribute(name, value) { this.attributes.set(name, String(value)); }
+  getAttribute(name) { return this.attributes.get(name) ?? null; }
 }
 
 class FakeText {}
@@ -61,6 +68,7 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   let fetchBytes = new Uint8Array();
   let lastFetchUrl = '';
   const homepageFetchPayloads = [];
+  let commentRenderers = [];
   const windowProxy = {
     fetch: async (input) => {
       lastFetchUrl = input instanceof Request ? input.url : String(input);
@@ -80,6 +88,9 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
     readyState: 'loading',
     documentElement: new FakeElement('html'),
     querySelector() { return null; },
+    querySelectorAll(selector) {
+      return String(selector).includes('bili-comment-') ? commentRenderers : [];
+    },
     createElement() { return new FakeElement('meta'); },
   };
   let rootWrites = 0;
@@ -214,6 +225,59 @@ test('MAIN and isolated worlds complete the token/rule handshake and reinjection
   assert.equal(isolated.PiliPlusPurifyContentApi.getConfig().mutedUsers[0].mid, 123456789);
   assert.equal(await isolated.PiliPlusPurifyContentApi.toggleMarkedUser(33, '标记示例'), true);
   assert.equal(isolated.PiliPlusPurifyContentApi.getConfig().markedUsers[0].mid, 33);
+
+  const mainComment = new FakeElement('bili-comment-thread-renderer');
+  mainComment.data = {
+    rpid_str: '900000000000000001',
+    root_str: '0',
+    member: { mid: '123456789', uname: '目录用户', level_info: { current_level: 5 } },
+    content: { message: '主评论目录测试' },
+  };
+  const replyComment = new FakeElement('bili-comment-reply-renderer');
+  replyComment.data = {
+    rpid_str: '900000000000000002',
+    root_str: '900000000000000001',
+    member: { mid: '123456789', uname: '目录用户' },
+    content: { message: '回复目录测试' },
+  };
+  const delayedComment = new FakeElement('bili-comment-reply-renderer');
+  commentRenderers = [mainComment, replyComment, delayedComment];
+  assert.equal(isolated.PiliPlusPurifyContentApi.requestCommentCatalog('test', true), true);
+  let catalogStatus = isolated.PiliPlusPurifyContentApi.getStatusSnapshot().commentCatalog;
+  assert.equal(catalogStatus.comments, 2);
+  assert.equal(catalogStatus.mainComments, 1);
+  assert.equal(catalogStatus.replies, 1);
+  assert.equal(catalogStatus.accounts, 1);
+  assert.equal(catalogStatus.pending, 1);
+  isolated.PiliPlusPurifyContentApi.registerCommentElement('900000000000000001', mainComment);
+  isolated.PiliPlusPurifyContentApi.registerCommentElement('900000000000000002', replyComment);
+  assert.deepEqual(
+    Array.from(isolated.PiliPlusPurifyContentApi.getMountedCommentRpidsByMid('123456789')),
+    ['900000000000000001', '900000000000000002'],
+  );
+
+  setTimeout(() => {
+    delayedComment.data = {
+      rpid_str: '900000000000000003',
+      root_str: '900000000000000001',
+      member: { mid: '456789123', uname: '延迟用户' },
+      content: { message: '延迟赋值回复' },
+    };
+  }, 20);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  catalogStatus = isolated.PiliPlusPurifyContentApi.getStatusSnapshot().commentCatalog;
+  assert.equal(catalogStatus.comments, 3);
+  assert.equal(catalogStatus.pending, 0);
+  assert.ok(catalogStatus.retries >= 1);
+
+  mainComment.isConnected = false;
+  replyComment.isConnected = false;
+  delayedComment.isConnected = false;
+  commentRenderers = [];
+  common.location.pathname = '/video/BV2NEXT';
+  common.location.href = 'https://www.bilibili.com/video/BV2NEXT';
+  isolated.PiliPlusPurifyContentApi.resetCommentCatalogForRoute('https://www.bilibili.com/video/BV2NEXT');
+  assert.equal(isolated.PiliPlusPurifyContentApi.getStatusSnapshot().commentCatalog.comments, 0);
 
   const hookedFetch = windowProxy.fetch;
   const messageListenerCount = listeners.length;

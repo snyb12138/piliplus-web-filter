@@ -214,5 +214,54 @@
     return { data: result.data, dropped: result.uploaderDropped, hits: result.uploaderHits };
   }
 
-  return Object.freeze({ MAX_BYTES, readVarint, readFields, decodeElem, filterSegment, uploaderFromItem, adReasonFromItem, filterContentJson, filterUploaderJson });
+  function decimalId(value, allowZero = false) {
+    if (typeof value === 'bigint') value = value.toString();
+    if (typeof value === 'number') {
+      if (!Number.isSafeInteger(value)) return null;
+      value = String(value);
+    }
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim();
+    if (!/^\d+$/u.test(normalized)) return null;
+    if (!allowZero && /^0+$/u.test(normalized)) return null;
+    return normalized.replace(/^0+(?=\d)/u, '');
+  }
+
+  function normalizeCommentData(raw, isReply = false) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const member = raw.member && typeof raw.member === 'object' ? raw.member : {};
+    const content = raw.content && typeof raw.content === 'object' ? raw.content : {};
+    const rpid = decimalId(raw.rpid_str ?? raw.rpid);
+    const mid = decimalId(member.mid ?? raw.mid_str ?? raw.mid);
+    if (!rpid || !mid) return null;
+    const mentions = [];
+    const mentionSource = content.at_name_to_mid && typeof content.at_name_to_mid === 'object'
+      ? content.at_name_to_mid
+      : {};
+    for (const [name, mentionMid] of Object.entries(mentionSource)) {
+      const parsedMid = decimalId(mentionMid);
+      if (!parsedMid) continue;
+      mentions.push({ mid: parsedMid, name: String(name || '').trim() });
+    }
+    const root = decimalId(raw.root_str ?? raw.root, true) || '0';
+    const officialType = Number(member.official_verify?.type);
+    return {
+      rpid,
+      root,
+      mid,
+      uname: String(member.uname ?? member.name ?? '').trim(),
+      avatar: String(member.avatar ?? member.face ?? '').trim(),
+      sign: String(member.sign ?? '').trim(),
+      level: Math.max(0, Number(member.level_info?.current_level) || 0),
+      verify: Number.isFinite(officialType) ? officialType : -1,
+      vip: Math.max(0, Number(member.vip?.vipStatus ?? member.vip?.status) || 0),
+      text: String(content.message ?? raw.message ?? ''),
+      mentions,
+      ctime: Math.max(0, Number(raw.ctime) || 0),
+      like: Math.max(0, Number(raw.like) || 0),
+      isReply: isReply === true,
+    };
+  }
+
+  return Object.freeze({ MAX_BYTES, readVarint, readFields, decodeElem, filterSegment, uploaderFromItem, adReasonFromItem, filterContentJson, filterUploaderJson, normalizeCommentData });
 });

@@ -107,3 +107,39 @@ test('advertising filter removes homepage markers and dynamic promotions without
   assert.equal(dynamicResult.adsDropped, 2);
   assert.equal(dynamic.data.items.length, 1);
 });
+
+test('structured comment data keeps identifiers exact and distinguishes replies', () => {
+  const main = PageCore.normalizeCommentData({
+    rpid_str: '987654321012345678',
+    root_str: '0',
+    member: {
+      mid: '123456789',
+      uname: '结构化用户',
+      avatar: 'https://example.test/avatar.jpg',
+      sign: '签名',
+      level_info: { current_level: 6 },
+      official_verify: { type: 0 },
+      vip: { vipStatus: 1 },
+    },
+    content: { message: '主评论', at_name_to_mid: { 被提及者: '9988' } },
+    ctime: 1700000000,
+    like: 42,
+  }, false);
+  assert.equal(main.rpid, '987654321012345678');
+  assert.equal(main.mid, '123456789');
+  assert.equal(main.root, '0');
+  assert.equal(main.isReply, false);
+  assert.deepEqual(main.mentions, [{ mid: '9988', name: '被提及者' }]);
+
+  const reply = PageCore.normalizeCommentData({
+    rpid: 456,
+    root: 123,
+    member: { mid: 789, uname: '回复用户' },
+    content: { message: '楼中楼回复' },
+  }, true);
+  assert.equal(reply.rpid, '456');
+  assert.equal(reply.root, '123');
+  assert.equal(reply.mid, '789');
+  assert.equal(reply.isReply, true);
+  assert.equal(PageCore.normalizeCommentData({ rpid: 1, member: {} }), null);
+});

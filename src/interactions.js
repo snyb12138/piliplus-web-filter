@@ -1112,7 +1112,37 @@
     }
   }
 
+  function commentCatalogHost(start) {
+    return closestAcrossRoots(start, '[data-pbp-comment-rpid]');
+  }
+
+  function registerCommentCatalogElements(root) {
+    const elements = [];
+    try {
+      if (root instanceof Element && root.matches('[data-pbp-comment-rpid]')) elements.push(root);
+      if (root instanceof ShadowRoot && root.host.matches('[data-pbp-comment-rpid]')) elements.push(root.host);
+      elements.push(...root.querySelectorAll('[data-pbp-comment-rpid]'));
+    } catch (_) {
+      return;
+    }
+    for (const element of elements) {
+      Api.registerCommentElement(element.getAttribute('data-pbp-comment-rpid'), element);
+    }
+  }
+
+  function rootContainsCommentHost(root) {
+    try {
+      if (root instanceof Element && root.matches(COMMENT_HOST_SELECTOR)) return true;
+      if (root instanceof ShadowRoot && root.host.matches(COMMENT_HOST_SELECTOR)) return true;
+      return Boolean(root.querySelector(COMMENT_HOST_SELECTOR));
+    } catch (_) {
+      return false;
+    }
+  }
+
   function scanCommentRoot(root) {
+    registerCommentCatalogElements(root);
+    if (rootContainsCommentHost(root)) Api.requestCommentCatalog('dom-scan');
     let anchors;
     try {
       anchors = root instanceof Element && root.matches('a[href*="space.bilibili.com/"]') ? [root] : [];
@@ -1122,27 +1152,45 @@
     }
     const grouped = new Map();
     for (const anchor of anchors) {
-      const mid = parseSpaceMid(anchor);
+      const catalogElement = commentCatalogHost(anchor);
+      const rpid = catalogElement?.getAttribute('data-pbp-comment-rpid') || null;
+      const catalog = rpid ? Api.getCommentCatalogRecord(rpid) : null;
+      const catalogMid = Number(catalog?.mid);
+      const mid = Number.isSafeInteger(catalogMid) && catalogMid > 0 ? catalogMid : parseSpaceMid(anchor);
       if (!mid) continue;
       const container = closestAcrossRoots(anchor, COMMENT_CONTAINER_SELECTOR);
       const region = closestAcrossRoots(anchor, COMMENT_REGION_SELECTOR);
       if (!container || !region) continue;
-      const candidate = { anchor, mid, score: nameScore(anchor) };
+      const candidate = {
+        anchor,
+        mid,
+        rpid,
+        name: catalog?.uname || '',
+        score: nameScore(anchor) + (catalog ? 100 : 0),
+      };
       const previous = grouped.get(container);
       if (!previous || candidate.score > previous.score) grouped.set(container, candidate);
     }
     for (const [container, candidate] of grouped) {
       const existing = commentByContainer.get(container);
-      if (existing?.button.isConnected) continue;
+      if (existing?.button.isConnected) {
+        existing.mid = candidate.mid;
+        existing.rpid = candidate.rpid;
+        if (candidate.name) existing.name = candidate.name;
+        existing.button.dataset.mid = String(candidate.mid);
+        if (candidate.rpid) existing.button.dataset.rpid = candidate.rpid;
+        continue;
+      }
       if (existing) commentRecords.delete(existing);
-      const name = (candidate.anchor.textContent || candidate.anchor.getAttribute('title') || '').trim();
+      const name = candidate.name || (candidate.anchor.textContent || candidate.anchor.getAttribute('title') || '').trim();
       const button = createElement('button', '', '净化');
       button.type = 'button';
       button.title = '屏蔽其评论或加入标记库';
       button.dataset.pbpCommentAction = '1';
       button.dataset.mid = String(candidate.mid);
+      if (candidate.rpid) button.dataset.rpid = candidate.rpid;
       styleCommentButton(button);
-      const record = { button, container, mid: candidate.mid, name };
+      const record = { button, container, mid: candidate.mid, name, rpid: candidate.rpid };
       button.addEventListener('click', (event) => {
         handleCommentAction(record, event).catch((error) => showToast(`评论净化操作失败：${error.message}`));
       });
@@ -1280,6 +1328,9 @@
       return;
     }
     for (const host of hosts) if (host.shadowRoot) observeRoot(host.shadowRoot);
+    if (hosts.length && currentRoute() === activeRoute && Date.now() >= routeHoldUntil) {
+      Api.requestCommentCatalog('comment-host-discovered');
+    }
   }
 
   function observeListContainer(container) {
@@ -1323,6 +1374,7 @@
     videoInteractionHoldUntil = isVideoPageLocation() ? Date.now() + ROUTE_SETTLE_MS : 0;
     pendingRoots.clear();
     pendingRoots.add(document);
+    Api.resetCommentCatalogForRoute(route);
     Api.record('routeScanDeferrals');
     return true;
   }
@@ -1397,10 +1449,20 @@
       handleDanmakuClick(event).catch((error) => showToast(`弹幕净化操作失败：${error.message}`));
     }, true);
     observeRoot(document);
+    Api.requestCommentCatalog('interaction-start', true);
     setInterval(() => {
       discoverShadowRoots(document);
       discoverListContainers(document);
     }, 10_000);
+    setInterval(() => {
+      if (document.visibilityState === 'hidden' || Date.now() < routeHoldUntil) return;
+      const commentRegion = document.querySelector('bili-comments,#commentapp,#comment,.comment-container,.bili-comments');
+      if (!commentRegion) return;
+      const rect = commentRegion.getBoundingClientRect?.();
+      if (rect && rect.bottom < 0) return;
+      if (rect && rect.top > (window.innerHeight || 800) * 2) return;
+      Api.requestCommentCatalog('visible-fallback', true);
+    }, 2_000);
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && changes.purifyConfig) {
         setTimeout(() => {
@@ -1417,6 +1479,9 @@
       applyMutedComments();
       applyBlockedUploaders();
       refreshDomAds();
+    });
+    window.addEventListener('pbp-comment-catalog-updated', () => {
+      for (const root of observedRoots) scheduleContentScan(root);
     });
   }
 
